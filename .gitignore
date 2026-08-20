@@ -1,0 +1,73 @@
+# Published module surface.
+#
+# Shipped: runtime code, CI, /README.md, /CHANGELOG.md, /vault-cluster-readme.md
+# Local-only (kept on disk, not published): ADRs, design docs, runbooks, examples,
+# and any other markdown.
+
+*.md
+!/README.md
+!/CHANGELOG.md
+!/vault-cluster-readme.md
+docs/
+runbooks/
+examples/
+adrs/
+adapters/
+
+# Unseal keys, tokens, snapshots — never commit.
+.bootstrap/
+**/.bootstrap/
+*.unseal
+*.unseal-keys
+vault-init.json
+.vault-init
+.vault-token
+*.token
+*.snap
+*.snapshot
+audit.log
+audit*.log
+local/data/
+local/audit/
+local/backups/
+
+# Generated policies.
+config/policies/rendered/
+*.rendered.hcl
+
+# Secrets and local env.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/testdata/**/*.key
+*.crt
+!**/testdata/**/*.crt
+*.p12
+*.pfx
+role-id
+secret-id
+
+# OpenTofu / Terraform state (none yet).
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Test/editor noise.
+test-results/
+*.tap
+.coverage
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+.cursor/
+*.swp
+*~
