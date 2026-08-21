@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `local/vault/config.hcl` — `disable_mlock = true` so Vault starts in Compose
+  and GitHub Actions (`Failed to lock memory: cannot allocate memory`).
+- `.github/workflows/validate.yml` — CE image grep no longer matches the
+  workflow file itself.
+
 ### Added
 
 - `vault-cluster-readme.md` — short operator guide for local `./setup.sh`,

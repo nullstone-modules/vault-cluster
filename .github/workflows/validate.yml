@@ -168,7 +168,7 @@ jobs:
             echo "FAIL: Vault Enterprise-only feature referenced (Community Edition only)"
             fail=1
           fi
-          if grep -rIn 'hashicorp/vault-enterprise' . --exclude-dir=.git; then
+          if grep -rIn 'hashicorp/vault-enterprise' config scripts tests local --exclude-dir=.git; then
             echo "FAIL: Enterprise image referenced"; fail=1
           fi
           exit "$fail"

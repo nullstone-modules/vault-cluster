@@ -19,4 +19,5 @@ cluster_addr = "http://vault:8201"
 log_level  = "info"
 log_format = "json"
 
-disable_mlock = false
+# Compose and GitHub Actions cannot mlock. Production hosts use IPC_LOCK instead.
+disable_mlock = true
