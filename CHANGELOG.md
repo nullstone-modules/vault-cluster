@@ -13,14 +13,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.github/workflows/validate.yml` — CE image grep no longer matches the
   workflow file itself.
 
-### Added
-
-- `vault-cluster-readme.md` — short operator guide for local `./setup.sh`,
-  auto-init, and the Compose unseal sidecar.
-
 ### Changed
 
-- `.github/workflows` — run CI on `master` and `develop` as well as `main`.
+- Single root `README.md` is the operator and architecture guide. Removed
+  `vault-cluster-readme.md` and `vault-cluster-technical-doc.md`.
+- `.github/workflows` run CI on `master` and `develop` as well as `main`.
 - `tests/conformance/credentials/*` — credential suites revoke the leases they
   issue as the tenant (provisioning cannot `revoke-prefix`). Residue scan no
   longer treats leftover test roles as orphans.
@@ -31,7 +28,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `local/bootstrap/bootstrap.sh`, `local/setup.sh` — `./setup.sh --with-credentials`
   on an isolation Vault now mounts the database engine and refreshes tenant
   roles instead of skipping as "already configured".
-- Publish only root `README.md`, `CHANGELOG.md`, and `vault-cluster-readme.md`.
+- Publish only root `README.md` and `CHANGELOG.md`.
   ADRs, design docs, runbooks, examples, and nested READMEs stay local via
   `.gitignore`.
 - Trim essay comments and INV labels from policies, scripts, tests, and CI.

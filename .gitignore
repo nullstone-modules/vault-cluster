@@ -1,13 +1,12 @@
 # Published module surface.
 #
-# Shipped: runtime code, CI, /README.md, /CHANGELOG.md, /vault-cluster-readme.md
+# Shipped: runtime code, CI, /README.md, /CHANGELOG.md
 # Local-only (kept on disk, not published): ADRs, design docs, runbooks, examples,
 # and any other markdown.
 
 *.md
 !/README.md
 !/CHANGELOG.md
-!/vault-cluster-readme.md
 docs/
 runbooks/
 examples/

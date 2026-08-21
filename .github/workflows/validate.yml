@@ -219,4 +219,3 @@ jobs:
           set -euo pipefail
           [ -f README.md ] || { echo "missing: README.md"; exit 1; }
           [ -f CHANGELOG.md ] || { echo "missing: CHANGELOG.md"; exit 1; }
-          [ -f vault-cluster-readme.md ] || { echo "missing: vault-cluster-readme.md"; exit 1; }
