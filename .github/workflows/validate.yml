@@ -196,17 +196,30 @@ jobs:
           set -euo pipefail
           cd local
           cp .env.example .env
-          docker compose config --quiet
 
-          if docker compose config --services | grep -q '^postgres$'; then
+          docker compose --env-file .env config --quiet
+
+          default_svcs="$(docker compose --env-file .env config --services)"
+          printf 'default services:\n%s\n' "${default_svcs}"
+          if printf '%s\n' "${default_svcs}" | grep -qx 'postgres'; then
             echo "FAIL: postgres appears without the credentials profile"
             exit 1
           fi
-          docker compose --profile credentials config --services | grep -q '^postgres$' \
-            || { echo "FAIL: postgres missing from the credentials profile"; exit 1; }
 
-          docker compose config --services | grep -q '^unseal$' \
-            || { echo "FAIL: unseal sidecar missing from the default compose services"; exit 1; }
+          cred_svcs="$(COMPOSE_PROFILES=credentials docker compose --env-file .env --profile credentials config --services)"
+          printf 'credentials services:\n%s\n' "${cred_svcs}"
+          if ! printf '%s\n' "${cred_svcs}" | grep -qx 'postgres'; then
+            echo "FAIL: postgres missing from the credentials profile"
+            exit 1
+          fi
+
+          if ! printf '%s\n' "${default_svcs}" | grep -qx 'unseal'; then
+            echo "FAIL: unseal sidecar missing from the default compose services"
+            exit 1
+          fi
+
+          grep -A20 '^  postgres:' docker-compose.yml | grep -q 'credentials' \
+            || { echo "FAIL: postgres is not declared behind the credentials profile in docker-compose.yml"; exit 1; }
 
   docs:
     name: documentation

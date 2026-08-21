@@ -14,7 +14,18 @@ export VAULT_CLI_NO_COLOR=true
 log() { printf '[unseal] %s\n' "$*" >&2; }
 
 mkdir -p /bootstrap
+
+# Bind-mount owner on the host. Writing as root (user 0:0) would leave
+# vault-init.json mode 600 owned by root, which GitHub Actions cannot jq.
+bootstrap_uid=$(stat -c '%u' /bootstrap 2>/dev/null || printf '0')
+bootstrap_gid=$(stat -c '%g' /bootstrap 2>/dev/null || printf '0')
+
+own_bootstrap() {
+  chown "${bootstrap_uid}:${bootstrap_gid}" /bootstrap "$@" 2>/dev/null || true
+}
+
 chmod 700 /bootstrap 2>/dev/null || true
+own_bootstrap
 
 wait_for_vault() {
   n=0
@@ -69,6 +80,7 @@ do_init() {
        -format=json > "${tmp}"; then
     mv "${tmp}" "${INIT_FILE}"
     chmod 600 "${INIT_FILE}"
+    own_bootstrap "${INIT_FILE}"
     log "initialized persistent Vault; unseal material written (not logged)"
     log "BACK UP ${INIT_FILE} on the host. Without it this volume cannot be unsealed."
   else

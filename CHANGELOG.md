@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `local/bootstrap/compose-unseal.sh` - chown `vault-init.json` to the bind-mount
+  owner so host `jq` can read it on Linux CI (root-owned mode 600).
+- `.github/workflows/validate.yml` - enable the credentials profile with
+  `COMPOSE_PROFILES` and `--env-file` so postgres is visible in `compose config`.
 - `local/vault/config.hcl` — `disable_mlock = true` so Vault starts in Compose
   and GitHub Actions (`Failed to lock memory: cannot allocate memory`).
 - `.github/workflows/validate.yml` — CE image grep no longer matches the
