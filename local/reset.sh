@@ -34,7 +34,7 @@ load_env
 
 info "destroying containers and volumes"
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" \
-  --profile credentials --profile bootstrap down \
+  --profile credentials down \
   --volumes --remove-orphans
 
 if [ "${KEEP_BOOTSTRAP}" = "true" ]; then

@@ -39,7 +39,7 @@ else
 fi
 
 info "running vault-utils bootstrap"
-compose --profile bootstrap run --rm --no-deps bootstrap
+compose run --rm --no-deps bootstrap
 
 wait_for_unsealed 60 || die "Vault is still sealed after bootstrap"
 

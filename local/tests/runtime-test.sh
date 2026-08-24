@@ -147,7 +147,7 @@ else
       fi
 
       info "re-running one-shot bootstrap to unseal"
-      if compose --profile bootstrap run --rm --no-deps bootstrap >/dev/null; then
+      if compose run --rm --no-deps bootstrap >/dev/null; then
         ok "one-shot bootstrap unsealed Vault after restart"
       else
         no "one-shot bootstrap unsealed Vault after restart" "bootstrap failed"
@@ -181,7 +181,7 @@ else
     fi
   else
     no "tenant AppRole login for the persistence probe" \
-       "has tenant-a been onboarded with create-tenant.sh?"
+       "has tenant-a been onboarded?"
   fi
 fi
 

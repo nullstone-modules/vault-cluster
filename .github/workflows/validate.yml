@@ -52,44 +52,6 @@ jobs:
           done < <(find config scripts tests local -name '*.sh' | sort)
           exit "$fail"
 
-  policy-lint:
-    name: policy linter self-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Linter must reject every BAD fixture and accept GOOD ones
-        # The detector self-test. A linter that has never rejected anything is
-        # indistinguishable from one with a broken pattern - both report
-        # success on every run.
-        run: tests/lint/lint-self-test.sh
-
-      - name: Real templates must render and pass lint
-        run: |
-          set -euo pipefail
-          scripts/tenants/render-policy.sh provisioning >/dev/null
-          scripts/tenants/render-policy.sh operator >/dev/null
-          for t in reader writer database; do
-            scripts/tenants/render-policy.sh "tenant-$t" tenant-a "tenant-tenant-a-$t" >/dev/null
-          done
-          tests/lint/policy-lint.sh config/policies/rendered/*.hcl
-
-      - name: Tenant ID validation accepts and rejects correctly
-        run: |
-          set -euo pipefail
-          fail=0
-          for id in tenant-a tenant-b acme-corp; do
-            scripts/validation/validate-tenant-id.sh "$id" >/dev/null \
-              || { echo "should have been ACCEPTED: $id"; fail=1; }
-          done
-          # Each of these would become an ACL path if accepted.
-          for id in 'a/b' '../etc' 'tenant-*' 'TENANT' 'ab' 'sys' 'data' 'a b' 'a_b' '-x' 'x-'; do
-            if scripts/validation/validate-tenant-id.sh "$id" >/dev/null 2>&1; then
-              echo "should have been REJECTED: $id"; fail=1
-            fi
-          done
-          exit "$fail"
-
   architecture:
     name: runtime separation
     runs-on: ubuntu-latest
@@ -214,19 +176,12 @@ jobs:
             echo "FAIL: long-running unseal sidecar should not be a default service"
             exit 1
           fi
+          if ! printf '%s\n' "${default_svcs}" | grep -qx 'bootstrap'; then
+            echo "FAIL: bootstrap one-shot missing from default compose services"
+            exit 1
+          fi
           if printf '%s\n' "${default_svcs}" | grep -qx 'postgres'; then
             echo "FAIL: postgres appears without the credentials profile"
-            exit 1
-          fi
-
-          if printf '%s\n' "${default_svcs}" | grep -qx 'bootstrap'; then
-            echo "FAIL: bootstrap one-shot should not be a default compose service"
-            exit 1
-          fi
-
-          boot_svcs="$(COMPOSE_PROFILES=bootstrap docker compose --env-file .env --profile bootstrap config --services)"
-          if ! printf '%s\n' "${boot_svcs}" | grep -qx 'bootstrap'; then
-            echo "FAIL: bootstrap missing from the bootstrap profile"
             exit 1
           fi
 

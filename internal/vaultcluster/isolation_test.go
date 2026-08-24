@@ -237,6 +237,13 @@ func TestIsolationMatrix(t *testing.T) {
 			t.Fatalf("traversal granted HTTP %d: %s", r.Status, traversal)
 		}
 	}
+
+	if err := c.OffboardTenant("tenant-a", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.LoginAppRole(cfg.TenantRole("reader", "tenant-a")); err == nil {
+		t.Fatal("expected AppRole login to fail after offboard")
+	}
 }
 
 func lastLine(s string) string {

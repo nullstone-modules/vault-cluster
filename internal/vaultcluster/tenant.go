@@ -1,8 +1,13 @@
 package vaultcluster
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"strings"
+
+	"github.com/hashicorp/vault/api"
 )
 
 func (c *Client) CreateTenant(tenantID string, issueCreds bool) error {
@@ -129,4 +134,94 @@ func (c *Client) LoginAppRole(role string) (string, error) {
 		return "", fmt.Errorf("approle login returned no auth")
 	}
 	return login.Auth.ClientToken, nil
+}
+
+func (c *Client) OffboardTenant(tenantID string, purge bool) error {
+	if err := ValidateTenantID(tenantID); err != nil {
+		return err
+	}
+	for _, role := range []string{c.Cfg.TenantRole("reader", tenantID), c.Cfg.TenantRole("writer", tenantID)} {
+		if err := c.deleteMissingOK("auth/" + c.Cfg.AuthMount + "/role/" + role); err != nil {
+			return fmt.Errorf("delete role %s: %w", role, err)
+		}
+	}
+	if c.Cfg.EnableCredentials {
+		for _, suffix := range []string{"readonly", "readwrite"} {
+			dbRole := fmt.Sprintf("tenant-%s-%s", tenantID, suffix)
+			_ = c.API.Sys().RevokePrefix(c.Cfg.DatabaseMount + "/creds/" + dbRole)
+			if err := c.deleteMissingOK(c.Cfg.DatabaseMount + "/roles/" + dbRole); err != nil {
+				return fmt.Errorf("delete database role %s: %w", dbRole, err)
+			}
+		}
+	}
+	for _, name := range []string{
+		c.Cfg.TenantPolicy("reader", tenantID),
+		c.Cfg.TenantPolicy("writer", tenantID),
+		c.Cfg.TenantPolicy("database", tenantID),
+	} {
+		if err := c.API.Sys().DeletePolicy(name); err != nil && !isNotFound(err) {
+			return fmt.Errorf("delete policy %s: %w", name, err)
+		}
+	}
+	if purge {
+		if err := c.purgeTenantSecrets(tenantID); err != nil {
+			return err
+		}
+	}
+	log.Printf("tenant %s offboarded", tenantID)
+	return nil
+}
+
+func (c *Client) purgeTenantSecrets(tenantID string) error {
+	meta := c.Cfg.KVMetaPath(tenantID, "")
+	r, err := c.Do("GET", meta+"?list=true", nil)
+	if err != nil && r.Status == 0 {
+		return err
+	}
+	if r.Status == 403 {
+		return fmt.Errorf("permission denied listing %s (provisioning cannot purge tenant data)", meta)
+	}
+	if r.Status == 404 {
+		return nil
+	}
+	if r.Status < 200 || r.Status >= 300 {
+		return fmt.Errorf("list %s failed (HTTP %d)", meta, r.Status)
+	}
+	var wrap struct {
+		Data struct {
+			Keys []string `json:"keys"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(r.Body, &wrap); err != nil {
+		return err
+	}
+	for _, key := range wrap.Data.Keys {
+		path := strings.TrimSuffix(meta+"/"+strings.TrimSuffix(key, "/"), "/")
+		if err := c.deleteMissingOK(path); err != nil {
+			return fmt.Errorf("destroy %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func (c *Client) deleteMissingOK(path string) error {
+	r, err := c.Do("DELETE", path, nil)
+	if err != nil && r.Status == 0 {
+		return err
+	}
+	if r.Status == 404 || (r.Status >= 200 && r.Status < 300) {
+		return nil
+	}
+	return fmt.Errorf("DELETE %s failed (HTTP %d): %s", path, r.Status, strings.TrimSpace(string(r.Body)))
+}
+
+func isNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	var re *api.ResponseError
+	if errors.As(err, &re) && re.StatusCode == 404 {
+		return true
+	}
+	return strings.Contains(err.Error(), "404")
 }

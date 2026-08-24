@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster"
 )
@@ -27,6 +28,7 @@ Commands:
   local-bootstrap   Init (once), Shamir unseal, configure, synthetic tenants
   configure         Apply platform config (audit, KV, AppRole, policies)
   tenant-create     Onboard a tenant: vault-utils tenant-create <id> [--no-credentials]
+  tenant-offboard   Revoke access: vault-utils tenant-offboard <id> --yes [--purge-secrets]
   health            Seal status and KV mount
 `)
 }
@@ -67,6 +69,25 @@ func run(cmd string, args []string) error {
 			}
 		}
 		return c.CreateTenant(id, issue)
+	case "tenant-offboard":
+		yes, purge := false, false
+		id := ""
+		for _, a := range args {
+			switch a {
+			case "--yes":
+				yes = true
+			case "--purge-secrets":
+				purge = true
+			default:
+				if !strings.HasPrefix(a, "-") {
+					id = a
+				}
+			}
+		}
+		if id == "" || !yes {
+			return fmt.Errorf("usage: vault-utils tenant-offboard <tenant-id> --yes [--purge-secrets]")
+		}
+		return c.OffboardTenant(id, purge)
 	case "health":
 		return c.Health()
 	default:

@@ -44,7 +44,6 @@ services:
       dockerfile: Dockerfile
     restart: "no"
     user: "0:0"
-    profiles: ["bootstrap"]
     depends_on:
       vault:
         condition: service_healthy

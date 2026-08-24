@@ -9,26 +9,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `internal/vaultcluster` Go library, `cmd/vault-utils` CLI, and root `Dockerfile`
-  for a `vault-utils` image (local-bootstrap, configure, tenant-create, health).
+  for a `vault-utils` image (local-bootstrap, configure, tenant-create,
+  tenant-offboard, health).
 - `go test -short ./...` for tenant-id and policy lint; `TestIsolationMatrix`
   runs a throwaway Vault CE container and asserts isolation denials as HTTP 403.
 
 ### Changed
 
-- `local/docker-compose.yml`, `local/setup.sh`, `local/bootstrap/up.sh`: Compose
-  bootstrap is a one-shot `bootstrap` profile (`restart: "no"`), not a
-  long-running Shamir unseal sidecar. A Vault process restart reseals until
-  `./setup.sh` or `docker compose --profile bootstrap run --rm bootstrap`.
-- `.github/workflows/validate.yml`: `go test -short ./...`; compose job expects
-  the bootstrap profile, not an `unseal` service.
-- `.github/workflows/test-local.yml`: isolation job is `go test`; Compose
-  one-shot and credentials remain separate jobs.
+- `local/docker-compose.yml`: `bootstrap` is a default one-shot service
+  (`restart: "no"`). `docker compose up -d` starts Vault and runs bootstrap
+  once. A Vault process restart reseals until `./setup.sh` or
+  `docker compose run --rm bootstrap`.
+- `.github/workflows/validate.yml`: unit checks are `go test -short ./...`.
+  Compose job requires `bootstrap` as a default service and forbids `unseal`.
+- `.github/workflows/test-local.yml`: isolation is `go test`; Compose one-shot
+  and credentials remain separate jobs.
+- Local operators use `vault-utils` for tenant create and offboard.
 - `local/tests/runtime-test.sh`: asserts bootstrap is not long-running; after
   restart, re-runs the one-shot to unseal and checks Raft persistence.
 - `local/setup.sh`, `local/bootstrap/up.sh`: start PostgreSQL when
   `ENABLE_DYNAMIC_CREDENTIALS` is already true in `.env`, not only when
   `--with-credentials` is passed.
-- Trim comments and replace em dashes in files touched by this work.
+- Trim comments in files touched by this work.
+
+### Removed
+
+- `local/bootstrap/compose-unseal.sh` (long-running Shamir sidecar).
+- `local/bootstrap/bootstrap.sh` (bash local bootstrap).
 
 ### Fixed
 

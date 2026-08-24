@@ -29,5 +29,5 @@ else
   compose up -d --wait vault
 fi
 
-compose --profile bootstrap run --rm --no-deps bootstrap
+compose run --rm --no-deps bootstrap
 info "VAULT_ADDR=${VAULT_ADDR}"
