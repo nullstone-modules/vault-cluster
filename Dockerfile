@@ -1,4 +1,3 @@
-# Build vault-utils. Context is the repository root.
 FROM golang:1.23-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./

@@ -1,4 +1,4 @@
-# Isolation in Go (no Compose), then Compose one-shot, then credentials.
+# Isolation (go test), Compose one-shot, then credentials.
 name: test-local
 
 on:

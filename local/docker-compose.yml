@@ -56,9 +56,7 @@ services:
     networks:
       - vault-cluster
 
-  # One-shot bootstrap: init, Shamir unseal, platform config, synthetic tenants.
-  # Not a long-running sidecar. Re-run via ./setup.sh or:
-  #   docker compose run --rm bootstrap
+  # One-shot: init, unseal, configure. Not a long-running sidecar.
   bootstrap:
     build:
       context: ..

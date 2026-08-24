@@ -102,10 +102,7 @@ func LintPolicy(policyName, src string, cfg Config) []Finding {
 
 		if strings.HasSuffix(p.path, "/"+cfg.TenantPrefix+"/*") || strings.HasSuffix(p.path, "/"+cfg.TenantPrefix+"/") {
 			if strings.HasPrefix(p.path, cfg.KVMount+"/") && p.caps != "deny" {
-				// tenant-scoped paths include the tenant id before /* and are OK.
-				// A grant directly under prefix is: kv/data/customers/*
 				segs := strings.Split(p.path, "/")
-				// kv / data / customers / *
 				if len(segs) == 4 && segs[2] == cfg.TenantPrefix && segs[3] == "*" && p.caps != "deny" {
 					add(fmt.Sprintf("path %q grants [%s] across all tenants", p.path, p.caps))
 				}

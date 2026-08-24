@@ -25,7 +25,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one-shot and credentials remain separate jobs.
 - `local/tests/runtime-test.sh` — asserts bootstrap is not long-running; after
   restart, re-runs the one-shot to unseal and checks Raft persistence.
-- `local/reset.sh` — tears down the bootstrap profile as well as credentials.
+- `local/setup.sh`, `local/bootstrap/up.sh` — start PostgreSQL when
+  `ENABLE_DYNAMIC_CREDENTIALS` is already true in `.env`, not only when
+  `--with-credentials` is passed.
 
 ### Fixed
 

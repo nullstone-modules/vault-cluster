@@ -16,11 +16,15 @@ while [ $# -gt 0 ]; do
 done
 
 require_docker
+if [ "${WITH_CREDENTIALS}" = "true" ]; then
+  ENABLE_DYNAMIC_CREDENTIALS=true
+  export ENABLE_DYNAMIC_CREDENTIALS
+fi
 load_env
 ensure_bootstrap_dir
 
-if [ "${WITH_CREDENTIALS}" = "true" ]; then
-  compose --profile credentials up -d --wait vault postgres
+if credentials_enabled; then
+  compose up -d --wait vault postgres
 else
   compose up -d --wait vault
 fi

@@ -153,8 +153,6 @@ else
       compose restart vault >/dev/null 2>&1
       wait_for_vault 60 >/dev/null 2>&1
 
-      # Shamir reseals on process restart. Recovery is the vault-utils one-shot,
-      # not a long-running sidecar.
       if vault_is_sealed; then
         ok "Vault resealed after process restart (expected for Shamir)"
       else

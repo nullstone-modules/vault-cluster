@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # ./setup.sh [--with-credentials]
-# Local Shamir init/unseal via vault-utils one-shot. Not production KMS auto-unseal.
 set -euo pipefail
 
 # shellcheck source=bootstrap/lib.sh
@@ -33,8 +32,8 @@ fi
 ensure_bootstrap_dir
 
 info "starting Vault"
-if [ "${WITH_CREDENTIALS}" = "true" ]; then
-  compose --profile credentials up -d --wait vault postgres
+if credentials_enabled; then
+  compose up -d --wait vault postgres
 else
   compose up -d --wait vault
 fi
@@ -60,9 +59,6 @@ Local Vault is ready.
   export VAULT_ADDR=${VAULT_ADDR}
   export VAULT_TOKEN=\$(cat ${BOOTSTRAP_DIR}/provisioning.token)
 
-  go test ./...
-  go test ./internal/vaultcluster -run TestIsolation
-
-This is local Shamir unseal automation, not production KMS auto-unseal.
+  go test ./internal/vaultcluster -run TestIsolationMatrix
 --------------------------------------------------------------------
 EOF
