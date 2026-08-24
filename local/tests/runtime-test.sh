@@ -35,10 +35,11 @@ else
   no "compose healthcheck reports healthy" "state was '${HEALTH_STATE}'"
 fi
 
-if compose ps --status running --format '{{.Service}}' 2>/dev/null | grep -q '^unseal$'; then
-  ok "unseal sidecar is running"
+if compose ps --status running --format '{{.Service}}' 2>/dev/null | grep -qE '^(unseal|bootstrap)$'; then
+  no "bootstrap is not a long-running service" \
+     "unseal sidecar / bootstrap should not stay up; re-run via ./setup.sh"
 else
-  no "unseal sidecar is running" "compose should start vault and unseal together"
+  ok "bootstrap is not a long-running service"
 fi
 
 if [ "$(vault_health_code)" = "200" ]; then
@@ -152,19 +153,25 @@ else
       compose restart vault >/dev/null 2>&1
       wait_for_vault 60 >/dev/null 2>&1
 
-      # Shamir reseals on process restart. The Compose sidecar must unseal
-      # without the host submitting keys.
-      waited=0
-      while vault_is_sealed && [ "${waited}" -lt 45 ]; do
-        sleep 1
-        waited=$((waited + 1))
-      done
+      # Shamir reseals on process restart. Recovery is the vault-utils one-shot,
+      # not a long-running sidecar.
+      if vault_is_sealed; then
+        ok "Vault resealed after process restart (expected for Shamir)"
+      else
+        no "Vault resealed after process restart" "process restart left Vault unsealed"
+      fi
+
+      info "re-running one-shot bootstrap to unseal"
+      if compose --profile bootstrap run --rm --no-deps bootstrap >/dev/null; then
+        ok "one-shot bootstrap unsealed Vault after restart"
+      else
+        no "one-shot bootstrap unsealed Vault after restart" "bootstrap failed"
+      fi
 
       if vault_is_sealed; then
-        no "Compose sidecar unsealed Vault after restart" \
-           "still sealed after ${waited}s - unseal sidecar is not recovering"
+        no "Vault is unsealed after bootstrap" "still sealed"
       else
-        ok "Compose sidecar unsealed Vault after restart"
+        ok "Vault is unsealed after bootstrap"
 
         READ_VALUE="$(curl -s --header "X-Vault-Token: ${WRITER_TOKEN}" \
           "${VAULT_ADDR}/v1/${PROBE_PATH}" | jq -r '.data.data.probe // empty')"

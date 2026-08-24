@@ -14,6 +14,19 @@ permissions:
   contents: read
 
 jobs:
+  go:
+    name: go unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      - name: Unit tests (no Docker)
+        run: go test -short ./...
+
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
@@ -163,7 +176,7 @@ jobs:
           fail=0
           # sys/namespaces, control groups, performance replication, Sentinel.
           if grep -rInE 'sys/namespaces|X-Vault-Namespace|sys/replication|sys/control-group|sentinel' \
-               config/ scripts/ tests/ local/ --include='*.sh' --include='*.hcl' --include='*.tpl' \
+               config/ scripts/ tests/ local/ cmd/ internal/ --include='*.sh' --include='*.hcl' --include='*.tpl' --include='*.go' \
                | grep -vE ':\s*#' | grep -v 'VAULT_NAMESPACE'; then
             echo "FAIL: Vault Enterprise-only feature referenced (Community Edition only)"
             fail=1
@@ -201,8 +214,23 @@ jobs:
 
           default_svcs="$(docker compose --env-file .env config --services)"
           printf 'default services:\n%s\n' "${default_svcs}"
+          if printf '%s\n' "${default_svcs}" | grep -qx 'unseal'; then
+            echo "FAIL: long-running unseal sidecar should not be a default service"
+            exit 1
+          fi
           if printf '%s\n' "${default_svcs}" | grep -qx 'postgres'; then
             echo "FAIL: postgres appears without the credentials profile"
+            exit 1
+          fi
+
+          if printf '%s\n' "${default_svcs}" | grep -qx 'bootstrap'; then
+            echo "FAIL: bootstrap one-shot should not be a default compose service"
+            exit 1
+          fi
+
+          boot_svcs="$(COMPOSE_PROFILES=bootstrap docker compose --env-file .env --profile bootstrap config --services)"
+          if ! printf '%s\n' "${boot_svcs}" | grep -qx 'bootstrap'; then
+            echo "FAIL: bootstrap missing from the bootstrap profile"
             exit 1
           fi
 
@@ -210,11 +238,6 @@ jobs:
           printf 'credentials services:\n%s\n' "${cred_svcs}"
           if ! printf '%s\n' "${cred_svcs}" | grep -qx 'postgres'; then
             echo "FAIL: postgres missing from the credentials profile"
-            exit 1
-          fi
-
-          if ! printf '%s\n' "${default_svcs}" | grep -qx 'unseal'; then
-            echo "FAIL: unseal sidecar missing from the default compose services"
             exit 1
           fi
 

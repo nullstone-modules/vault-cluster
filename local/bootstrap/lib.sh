@@ -121,8 +121,7 @@ wait_for_vault() {
   die "Vault did not respond within ${timeout}s (last health code: ${code:-none})"
 }
 
-# The Compose unseal sidecar owns init+unseal. Host scripts wait for it so
-# they do not race operator init.
+# Host scripts wait after the vault-utils one-shot so they do not race init.
 wait_for_unsealed() {
   local timeout="${1:-90}" waited=0
   info "waiting for Vault to be initialized and unsealed (timeout ${timeout}s)"
@@ -134,7 +133,7 @@ wait_for_unsealed() {
     sleep 1
     waited=$((waited + 1))
   done
-  die "Vault was not unsealed within ${timeout}s. Is the compose unseal sidecar running?"
+  die "Vault was not unsealed within ${timeout}s. Re-run ./setup.sh (one-shot bootstrap)."
 }
 
 vault_is_initialized() {

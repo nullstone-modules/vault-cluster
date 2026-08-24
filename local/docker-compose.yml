@@ -56,37 +56,33 @@ services:
     networks:
       - vault-cluster
 
-  # Local Shamir init + unseal. First start initializes a persistent Vault;
-  # every later start and every `restart vault` unseals it. This is laptop DX,
-  # not production KMS auto-unseal. Keys are bind-mounted from host
-  # `.bootstrap/` (gitignored, mode 700/600) and are never logged.
-  unseal:
-    image: ${VAULT_IMAGE:?VAULT_IMAGE must be set - copy .env.example to .env}
-    container_name: vault-cluster-unseal
-    restart: unless-stopped
-    # Root only so the sidecar can write host `.bootstrap/` regardless of the
-    # container uid. Local development only; do not copy this to a shared env.
+  # One-shot bootstrap: init, Shamir unseal, platform config, synthetic tenants.
+  # Not a long-running sidecar. Re-run via ./setup.sh or:
+  #   docker compose run --rm bootstrap
+  bootstrap:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: "no"
     user: "0:0"
+    profiles: ["bootstrap"]
     depends_on:
       vault:
         condition: service_healthy
     environment:
       VAULT_ADDR: "http://vault:8200"
+      BOOTSTRAP_DIR: /bootstrap
       INIT_FILE: /bootstrap/vault-init.json
+      AUDIT_LOG_PATH: /vault/logs/audit.log
       VAULT_INIT_KEY_SHARES: "${VAULT_INIT_KEY_SHARES:-5}"
       VAULT_INIT_KEY_THRESHOLD: "${VAULT_INIT_KEY_THRESHOLD:-3}"
+      ENABLE_DYNAMIC_CREDENTIALS: "${ENABLE_DYNAMIC_CREDENTIALS:-false}"
+      DATABASE_CONNECTION_URL: "postgresql://{{username}}:{{password}}@postgres:5432/${POSTGRES_DB:-appdb}?sslmode=disable"
+      DATABASE_USERNAME: vault_admin
+      DATABASE_PASSWORD: "${VAULT_DB_ADMIN_PASSWORD:-}"
     volumes:
       - ./.bootstrap:/bootstrap
-      - ./bootstrap/compose-unseal.sh:/usr/local/bin/compose-unseal.sh:ro
-    entrypoint: ["/bin/sh", "/usr/local/bin/compose-unseal.sh"]
-    healthcheck:
-      # vault status exits 0 only when unsealed. compose up --wait uses this
-      # so a first-time start blocks until init+unseal have finished.
-      test: ["CMD-SHELL", "VAULT_ADDR=http://vault:8200 /bin/vault status"]
-      interval: 5s
-      timeout: 5s
-      retries: 24
-      start_period: 20s
+    command: ["local-bootstrap"]
     networks:
       - vault-cluster
 

@@ -49,7 +49,7 @@ else
 fi
 
 if vault_is_sealed; then
-  check "unsealed" fail "sealed - the compose unseal sidecar should recover; if this persists run ./setup.sh"
+  check "unsealed" fail "sealed - run ./setup.sh (one-shot bootstrap; not a long-running unseal sidecar)"
 else
   check "unsealed" ok ""
 fi

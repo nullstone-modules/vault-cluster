@@ -59,6 +59,10 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# Go build artifacts.
+/vault-utils
+coverage.out
+
 # Test/editor noise.
 test-results/
 *.tap

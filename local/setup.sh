@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ./setup.sh [--with-credentials]
-# Local Shamir init/unseal. Not production KMS auto-unseal.
+# Local Shamir init/unseal via vault-utils one-shot. Not production KMS auto-unseal.
 set -euo pipefail
 
 # shellcheck source=bootstrap/lib.sh
@@ -17,7 +17,6 @@ while [ $# -gt 0 ]; do
 done
 
 require_docker
-require_cmd curl jq
 load_env
 
 if [ "${WITH_CREDENTIALS}" = "true" ]; then
@@ -31,26 +30,19 @@ if [ "${WITH_CREDENTIALS}" = "true" ]; then
   ' "${ENV_FILE}" > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "${ENV_FILE}"
 fi
 
-info "local setup (Shamir unseal automation; not production KMS auto-unseal)"
+ensure_bootstrap_dir
 
+info "starting Vault"
 if [ "${WITH_CREDENTIALS}" = "true" ]; then
-  "${ADAPTER_DIR}/bootstrap/up.sh" --with-credentials
+  compose --profile credentials up -d --wait vault postgres
 else
-  "${ADAPTER_DIR}/bootstrap/up.sh"
+  compose up -d --wait vault
 fi
 
-"${ADAPTER_DIR}/bootstrap/bootstrap.sh"
+info "running vault-utils bootstrap (one-shot)"
+compose --profile bootstrap run --rm --no-deps bootstrap
 
-ensure_synthetic_tenant() {
-  local id="$1" tok
-  provisioning_token_usable || die "provisioning token is unusable after bootstrap"
-  tok="$(cat "${BOOTSTRAP_DIR}/provisioning.token")"
-  # Idempotent. Re-run so --with-credentials can add database roles later.
-  VAULT_TOKEN="${tok}" "${REPO_ROOT}/scripts/tenants/create-tenant.sh" "${id}" --no-credentials
-}
-
-ensure_synthetic_tenant tenant-a
-ensure_synthetic_tenant tenant-b
+wait_for_unsealed 60 || die "Vault is still sealed after bootstrap"
 
 "${ADAPTER_DIR}/bootstrap/health.sh"
 
@@ -60,13 +52,16 @@ cat >&2 <<EOF
 Local Vault is ready.
 
   VAULT_ADDR   ${VAULT_ADDR}
-  capability   isolation$(credentials_enabled && printf ' + dynamic database credentials')
+  capability   isolation$( [ "${WITH_CREDENTIALS}" = "true" ] && printf ' + dynamic database credentials')
   identities   ${BOOTSTRAP_DIR}/provisioning.token
                ${BOOTSTRAP_DIR}/operator.token
-  unseal       ${INIT_FILE}   (gitignored, mode 600 — back this up)
+  unseal       ${INIT_FILE}   (gitignored, mode 600)
 
   export VAULT_ADDR=${VAULT_ADDR}
   export VAULT_TOKEN=\$(cat ${BOOTSTRAP_DIR}/provisioning.token)
+
+  go test ./...
+  go test ./internal/vaultcluster -run TestIsolation
 
 This is local Shamir unseal automation, not production KMS auto-unseal.
 --------------------------------------------------------------------
