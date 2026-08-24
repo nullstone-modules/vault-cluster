@@ -31,6 +31,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `internal/vaultcluster/isolation_test.go` - parse the container ID from
+  `docker run` stdout only. Combined stdout/stderr included image-pull noise
+  on CI, so `docker port` failed.
 - `local/bootstrap/compose-unseal.sh` - chown `vault-init.json` to the bind-mount
   owner so host `jq` can read it on Linux CI (root-owned mode 600).
 - `.github/workflows/validate.yml` - enable the credentials profile with

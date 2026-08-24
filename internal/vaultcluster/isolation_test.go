@@ -24,19 +24,33 @@ func TestIsolationMatrix(t *testing.T) {
 	}
 
 	cfgJSON := `{"disable_mlock":true,"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":true}},"storage":{"inmem":{}}}`
-	out, err := exec.Command("docker", "run", "-d", "--rm", "-p", "127.0.0.1::8200",
+	run := exec.Command("docker", "run", "-d", "-p", "127.0.0.1::8200",
 		"-e", "VAULT_LOCAL_CONFIG="+cfgJSON,
 		"--cap-add", "IPC_LOCK",
-		vaultTestImage, "server").CombinedOutput()
+		vaultTestImage, "server")
+	out, err := run.Output()
 	if err != nil {
-		t.Fatalf("docker run: %v\n%s", err, out)
+		stderr := []byte(nil)
+		if ee, ok := err.(*exec.ExitError); ok {
+			stderr = ee.Stderr
+		}
+		t.Fatalf("docker run: %v\n%s\n%s", err, out, stderr)
 	}
-	id := strings.TrimSpace(string(out))
+	id := lastLine(string(out))
 	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", id).Run() })
 
-	portOut, err := exec.Command("docker", "port", id, "8200").Output()
-	if err != nil {
-		t.Fatal(err)
+	var portOut []byte
+	var portErr error
+	for i := 0; i < 20; i++ {
+		portOut, portErr = exec.Command("docker", "port", id, "8200").CombinedOutput()
+		if portErr == nil && strings.Contains(string(portOut), ":") {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	if portErr != nil || !strings.Contains(string(portOut), ":") {
+		logs, _ := exec.Command("docker", "logs", id).CombinedOutput()
+		t.Fatalf("docker port %s: %v\n%s\nlogs:\n%s", id, portErr, portOut, logs)
 	}
 	line := strings.TrimSpace(strings.Split(string(portOut), "\n")[0])
 	hostPort := line
@@ -223,4 +237,12 @@ func TestIsolationMatrix(t *testing.T) {
 			t.Fatalf("traversal granted HTTP %d: %s", r.Status, traversal)
 		}
 	}
+}
+
+func lastLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndex(s, "\n"); i >= 0 {
+		return strings.TrimSpace(s[i+1:])
+	}
+	return s
 }
