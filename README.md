@@ -1,6 +1,6 @@
 # Secrets Vault Cluster
 
-Reusable tenant-isolated secrets on HashiCorp Vault Community Edition.
+Multi-platform modules to configure a self-hosted Vault cluster on local, AWS, GCP, and Azure
 
 Applications share one Vault. They do not see each other's secrets. Isolation is a path prefix plus ACL policy plus AppRole. Vault CE has no namespaces. This is not Enterprise.
 
