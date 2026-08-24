@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# validate-tenant-id.sh <id>  — reject IDs that would break ACL paths.
+# validate-tenant-id.sh <id>  reject IDs that would break ACL paths.
 set -euo pipefail
 
 # shellcheck source=../lib/common.sh

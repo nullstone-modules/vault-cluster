@@ -6,7 +6,7 @@ VAULT_HTTP_TIMEOUT="${VAULT_HTTP_TIMEOUT:-15}"
 
 _VAULT_BODY_FILE=""
 
-# Call directly, never via $() — a subshell trap would delete the parent's body file.
+# Call directly, never via $(). A subshell trap would delete the parent's body file.
 _vault_ensure_body_file() {
   if [ -z "${_VAULT_BODY_FILE:-}" ] || [ ! -f "${_VAULT_BODY_FILE}" ]; then
     _VAULT_BODY_FILE="$(mktemp "${TMPDIR:-/tmp}/vault-resp.XXXXXX")"

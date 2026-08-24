@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ./reset.sh --yes  — destroy volumes and unseal keys.
+# ./reset.sh --yes  destroy volumes and unseal keys.
 set -euo pipefail
 
 # shellcheck source=bootstrap/lib.sh
@@ -40,8 +40,6 @@ docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" \
 if [ "${KEEP_BOOTSTRAP}" = "true" ]; then
   warn "keeping ${BOOTSTRAP_DIR} - note these keys no longer unseal anything"
 elif [ -d "${BOOTSTRAP_DIR}" ]; then
-  # Stale unseal shares are worse than no shares: they invite an operator to
-  # believe recovery is possible when the data they unlock no longer exists.
   info "removing stale bootstrap material"
   rm -rf "${BOOTSTRAP_DIR}"
 fi

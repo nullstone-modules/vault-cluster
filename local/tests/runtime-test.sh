@@ -51,8 +51,6 @@ fi
 
 sec "Dev mode is not in use"
 
-# Dev mode is in-memory and starts unsealed, so it would make every persistence
-# and unseal test below vacuous while appearing to pass.
 if compose config 2>/dev/null | grep -qE '(-dev\b|VAULT_DEV_ROOT_TOKEN_ID)'; then
   no "no dev-mode configuration present" "found dev-mode settings in the Compose configuration"
 else
@@ -75,9 +73,6 @@ fi
 
 sec "Storage separation"
 
-# Audit and Raft must be on different volumes. Sharing one means unbounded
-# audit growth fills the storage backend, and because Vault fails closed when
-# audit cannot write, a disk-space problem becomes a total outage.
 RAFT_VOL="$(docker inspect --format \
   '{{range .Mounts}}{{if eq .Destination "/vault/file"}}{{.Name}}{{end}}{{end}}' vault-cluster-vault 2>/dev/null)"
 AUDIT_VOL="$(docker inspect --format \
@@ -113,9 +108,6 @@ PORT_BINDING="$(docker inspect --format \
   '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{$p}}={{.HostIp}} {{end}}{{end}}' \
   vault-cluster-vault 2>/dev/null)"
 
-# TLS is disabled locally, so loopback binding is the compensating control.
-# A 0.0.0.0 binding would expose an unsealed, plaintext Vault to the whole
-# network.
 if printf '%s' "${PORT_BINDING}" | grep -q '127.0.0.1'; then
   ok "Vault port is published to 127.0.0.1 only"
 else
@@ -125,8 +117,6 @@ fi
 
 sec "Data persists across a restart"
 
-# The claim the local target exists to support. Dev mode would fail this, and so
-# would a bind mount pointing somewhere ephemeral.
 PROBE_PATH="${KV_MOUNT:-kv}/data/${TENANT_PREFIX:-customers}/tenant-a/runtime-persistence-probe"
 PROBE_VALUE="FAKE-persistence-probe-$(date +%s)"
 OPERATOR_TOKEN_FILE="${BOOTSTRAP_DIR}/provisioning.token"
@@ -134,9 +124,6 @@ OPERATOR_TOKEN_FILE="${BOOTSTRAP_DIR}/provisioning.token"
 if [ ! -f "${OPERATOR_TOKEN_FILE}" ]; then
   no "bootstrap tokens are present" "run ./setup.sh"
 else
-  # Written with the tenant's own identity, since the provisioning identity is
-  # denied KV access by design. Reuses the conformance login helper rather
-  # than reimplementing AppRole login here.
   export VAULT_TOKEN; VAULT_TOKEN="$(cat "${OPERATOR_TOKEN_FILE}")"
   # shellcheck source=/dev/null
   . "${REPO_ROOT}/tests/conformance/common/setup.sh"
@@ -181,8 +168,6 @@ else
              "expected '${PROBE_VALUE}', got '${READ_VALUE}' - storage is not persistent"
         fi
 
-        # Tokens are Raft state too; if this fails, storage is only partly
-        # persisting, which is harder to notice than losing everything.
         if curl -s -o /dev/null -w '%{http_code}' \
              --header "X-Vault-Token: ${WRITER_TOKEN}" \
              "${VAULT_ADDR}/v1/auth/token/lookup-self" | grep -q '^2'; then

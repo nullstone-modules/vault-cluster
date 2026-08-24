@@ -1,4 +1,4 @@
-# Local Docker target. No Vault -dev. Host bind is 127.0.0.1 only.
+# Local Vault CE. Bind 127.0.0.1 only. No -dev.
 
 name: vault-cluster
 
@@ -7,14 +7,9 @@ services:
     image: ${VAULT_IMAGE:?VAULT_IMAGE must be set - copy .env.example to .env}
     container_name: vault-cluster-vault
     restart: unless-stopped
-
     command: ["vault", "server", "-config=/vault/config/config.hcl"]
-
-    # IPC_LOCK lets Vault mlock its memory so key material cannot be paged to
-    # disk. Preferred over disable_mlock.
     cap_add:
       - IPC_LOCK
-
     environment:
       VAULT_ADDR: "http://127.0.0.1:8200"
       VAULT_CLUSTER_NAME: "${VAULT_CLUSTER_NAME:-vault-local}"
@@ -22,24 +17,12 @@ services:
       VAULT_LOG_FORMAT: "json"
       SKIP_CHOWN: "true"
       SKIP_SETCAP: "true"
-
-    # Loopback only. Publishing on 0.0.0.0 would expose an unsealed local Vault
-    # to the network.
     ports:
       - "127.0.0.1:${VAULT_HOST_PORT:-8200}:8200"
-
     volumes:
       - ./vault/config.hcl:/vault/config/config.hcl:ro
-      # Raft storage and audit logs live on separate volumes. Audit devices
-      # write on every request, and Vault fails closed when the audit device
-      # cannot write, so unbounded audit growth on the storage volume would
-      # turn a disk-space problem into a full outage plus possible storage
-      # corruption.
       - vault-data:/vault/file
       - vault-audit:/vault/logs
-
-    # Healthy means "responding", not "unsealed". A freshly started Vault is
-    # sealed and uninitialized by design, which is a valid pre-bootstrap state.
     healthcheck:
       test:
         - CMD
@@ -52,11 +35,9 @@ services:
       timeout: 3s
       retries: 12
       start_period: 5s
-
     networks:
       - vault-cluster
 
-  # One-shot: init, unseal, configure. Not a long-running sidecar.
   bootstrap:
     build:
       context: ..
@@ -84,49 +65,32 @@ services:
     networks:
       - vault-cluster
 
-  # Only required for dynamic database credentials. Behind a Compose profile,
-  # so `docker compose up` starts Vault alone and the isolation capability has
-  # no database dependency.
-  #
-  # Start with:  docker compose --profile credentials up -d
   postgres:
     image: ${POSTGRES_IMAGE:?POSTGRES_IMAGE must be set - copy .env.example to .env}
     container_name: vault-cluster-postgres
     restart: unless-stopped
     profiles: ["credentials"]
-
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-appdb}"
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
-      # Consumed by init.sh to create the role Vault authenticates as. Platform
-      # config reads the same variable, keeping a single source of truth.
       VAULT_DB_ADMIN_PASSWORD: "${VAULT_DB_ADMIN_PASSWORD:?VAULT_DB_ADMIN_PASSWORD must be set}"
-      # Deterministic locale so credential and grant assertions do not vary by
-      # host configuration.
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
-
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
-
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      # Runs once, on an empty data directory only.
       - ./postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
-
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"${POSTGRES_USER:-postgres}\" -d \"${POSTGRES_DB:-appdb}\""]
       interval: 5s
       timeout: 3s
       retries: 12
       start_period: 5s
-
     networks:
       - vault-cluster
 
 volumes:
-  # Named volumes, not bind mounts: runtime data must never land in the working
-  # tree where a careless `git add -A` could reach it.
   vault-data:
     name: vault-cluster-vault-data
   vault-audit:

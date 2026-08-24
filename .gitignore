@@ -13,7 +13,7 @@ examples/
 adrs/
 adapters/
 
-# Unseal keys, tokens, snapshots — never commit.
+# Unseal keys, tokens, snapshots. Never commit.
 .bootstrap/
 **/.bootstrap/
 *.unseal

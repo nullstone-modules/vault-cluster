@@ -15,19 +15,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- `local/docker-compose.yml`, `local/setup.sh`, `local/bootstrap/up.sh` — Compose
+- `local/docker-compose.yml`, `local/setup.sh`, `local/bootstrap/up.sh`: Compose
   bootstrap is a one-shot `bootstrap` profile (`restart: "no"`), not a
   long-running Shamir unseal sidecar. A Vault process restart reseals until
   `./setup.sh` or `docker compose --profile bootstrap run --rm bootstrap`.
-- `.github/workflows/validate.yml` — `go test -short ./...`; compose job expects
+- `.github/workflows/validate.yml`: `go test -short ./...`; compose job expects
   the bootstrap profile, not an `unseal` service.
-- `.github/workflows/test-local.yml` — isolation job is `go test`; Compose
+- `.github/workflows/test-local.yml`: isolation job is `go test`; Compose
   one-shot and credentials remain separate jobs.
-- `local/tests/runtime-test.sh` — asserts bootstrap is not long-running; after
+- `local/tests/runtime-test.sh`: asserts bootstrap is not long-running; after
   restart, re-runs the one-shot to unseal and checks Raft persistence.
-- `local/setup.sh`, `local/bootstrap/up.sh` — start PostgreSQL when
+- `local/setup.sh`, `local/bootstrap/up.sh`: start PostgreSQL when
   `ENABLE_DYNAMIC_CREDENTIALS` is already true in `.env`, not only when
   `--with-credentials` is passed.
+- Trim comments and replace em dashes in files touched by this work.
 
 ### Fixed
 
@@ -38,9 +39,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   owner so host `jq` can read it on Linux CI (root-owned mode 600).
 - `.github/workflows/validate.yml` - enable the credentials profile with
   `COMPOSE_PROFILES` and `--env-file` so postgres is visible in `compose config`.
-- `local/vault/config.hcl` — `disable_mlock = true` so Vault starts in Compose
+- `local/vault/config.hcl`: `disable_mlock = true` so Vault starts in Compose
   and GitHub Actions (`Failed to lock memory: cannot allocate memory`).
-- `.github/workflows/validate.yml` — CE image grep no longer matches the
+- `.github/workflows/validate.yml`: CE image grep no longer matches the
   workflow file itself.
 
 ### Changed
@@ -48,14 +49,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Single root `README.md` is the operator and architecture guide. Removed
   `vault-cluster-readme.md` and `vault-cluster-technical-doc.md`.
 - `.github/workflows` run CI on `master` and `develop` as well as `main`.
-- `tests/conformance/credentials/*` — credential suites revoke the leases they
+- `tests/conformance/credentials/*`: credential suites revoke the leases they
   issue as the tenant (provisioning cannot `revoke-prefix`). Residue scan no
   longer treats leftover test roles as orphans.
-- `local/bootstrap/health.sh` — reports the database engine from the mount,
+- `local/bootstrap/health.sh`: reports the database engine from the mount,
   not only from `.env`.
-- `local/setup.sh` — `--with-credentials` persists `ENABLE_DYNAMIC_CREDENTIALS=true`
+- `local/setup.sh`: `--with-credentials` persists `ENABLE_DYNAMIC_CREDENTIALS=true`
   in `.env` so later health/compose runs stay consistent.
-- `local/bootstrap/bootstrap.sh`, `local/setup.sh` — `./setup.sh --with-credentials`
+- `local/bootstrap/bootstrap.sh`, `local/setup.sh`: `./setup.sh --with-credentials`
   on an isolation Vault now mounts the database engine and refreshes tenant
   roles instead of skipping as "already configured".
 - Publish only root `README.md` and `CHANGELOG.md`.
@@ -86,7 +87,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cloud-agnostic Terraform contract module in ADR-0005.
 - ADR-0007: the provisioning identity has no access to tenant secret data,
   narrowing the grant drafted in ADR-0002.
-- ADR-0008: capability layering — isolation standalone, dynamic credentials
+- ADR-0008: capability layering: isolation standalone, dynamic credentials
   optional and off by default.
 
 **Vault configuration**

@@ -38,7 +38,7 @@ else
   compose up -d --wait vault
 fi
 
-info "running vault-utils bootstrap (one-shot)"
+info "running vault-utils bootstrap"
 compose --profile bootstrap run --rm --no-deps bootstrap
 
 wait_for_unsealed 60 || die "Vault is still sealed after bootstrap"
@@ -51,14 +51,11 @@ cat >&2 <<EOF
 Local Vault is ready.
 
   VAULT_ADDR   ${VAULT_ADDR}
-  capability   isolation$( [ "${WITH_CREDENTIALS}" = "true" ] && printf ' + dynamic database credentials')
   identities   ${BOOTSTRAP_DIR}/provisioning.token
                ${BOOTSTRAP_DIR}/operator.token
-  unseal       ${INIT_FILE}   (gitignored, mode 600)
+  unseal       ${INIT_FILE}
 
   export VAULT_ADDR=${VAULT_ADDR}
   export VAULT_TOKEN=\$(cat ${BOOTSTRAP_DIR}/provisioning.token)
-
-  go test ./internal/vaultcluster -run TestIsolationMatrix
 --------------------------------------------------------------------
 EOF

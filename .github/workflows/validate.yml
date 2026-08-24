@@ -1,8 +1,4 @@
-# Static validation. Runs on every push and pull request.
-#
-# Needs no Vault, no Docker, and no secrets, so it is fast and cannot be flaky.
-# Everything here catches a defect class that is otherwise invisible until
-# something is deployed.
+# Static validation.
 name: validate
 
 on:

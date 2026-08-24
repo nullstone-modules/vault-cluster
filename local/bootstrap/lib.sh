@@ -202,8 +202,7 @@ database_engine_mounted() {
   [ "${code}" = "200" ]
 }
 
-# Submit Shamir shares from INIT_FILE. Local development automation only —
-# this is not production KMS auto-unseal. Shares are never printed.
+# Submit Shamir shares from INIT_FILE. Local development only, not KMS auto-unseal.
 unseal_vault() {
   [ -f "${INIT_FILE}" ] || die \
     "cannot unseal: ${INIT_FILE} is missing. Restore it, or discard the
