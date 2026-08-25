@@ -2,9 +2,8 @@
 # Local runtime: persistence, audit volume, loopback bind. Requires ./setup.sh.
 set -uo pipefail
 
-ADAPTER_TESTS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../bootstrap/lib.sh
-. "${ADAPTER_TESTS_DIR}/../bootstrap/lib.sh"
+# shellcheck source=lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 
 require_docker
 require_cmd curl jq
@@ -23,7 +22,7 @@ sec "Containers and health"
 if compose ps --status running --format '{{.Service}}' 2>/dev/null | grep -q '^vault$'; then
   ok "vault container is running"
 else
-  no "vault container is running" "run ./bootstrap/up.sh first"
+  no "vault container is running" "run ./setup.sh first"
   printf '\n  %d passed, %d failed\n\n' "${PASSED}" "${FAILED}"
   exit 1
 fi
@@ -125,10 +124,16 @@ if [ ! -f "${OPERATOR_TOKEN_FILE}" ]; then
   no "bootstrap tokens are present" "run ./setup.sh"
 else
   export VAULT_TOKEN; VAULT_TOKEN="$(cat "${OPERATOR_TOKEN_FILE}")"
-  # shellcheck source=/dev/null
-  . "${ADAPTER_DIR}/tests/conformance/common/setup.sh"
-
-  if WRITER_TOKEN="$(approle_login "tenant-tenant-a-writer" 2>/dev/null)"; then
+  WRITER_TOKEN="$(
+    rid="$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
+      "${VAULT_ADDR}/v1/auth/approle/role/tenant-tenant-a-writer/role-id" | jq -r '.data.role_id')"
+    sid="$(curl -s --request POST --header "X-Vault-Token: ${VAULT_TOKEN}" \
+      "${VAULT_ADDR}/v1/auth/approle/role/tenant-tenant-a-writer/secret-id" | jq -r '.data.secret_id')"
+    curl -s --request POST --header "Content-Type: application/json" \
+      --data "$(jq -nc --arg r "${rid}" --arg s "${sid}" '{role_id:$r,secret_id:$s}')" \
+      "${VAULT_ADDR}/v1/auth/approle/login" | jq -r '.auth.client_token'
+  )"
+  if [ -n "${WRITER_TOKEN}" ] && [ "${WRITER_TOKEN}" != "null" ]; then
     if curl -s -o /dev/null -w '%{http_code}' \
         --header "X-Vault-Token: ${WRITER_TOKEN}" \
         --request POST \

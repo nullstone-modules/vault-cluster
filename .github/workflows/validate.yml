@@ -63,9 +63,6 @@ jobs:
             local pattern="$1" label="$2"
             if grep -rInE "$pattern" \
                  internal/vaultcluster/policies \
-                 local/scripts \
-                 local/tests/conformance \
-                 local/tests/lint \
                  --include='*.sh' --include='*.tpl' --include='*.hcl' \
                  | grep -vE '^\s*[^:]+:[0-9]+:\s*#' ; then
               echo "FAIL: HTTP-only tree references $label"
@@ -77,15 +74,6 @@ jobs:
           check 'vault-cluster-(vault|postgres)'  'container names'
           check '/vault/(file|logs|config)' 'container filesystem paths'
           exit "$fail"
-
-      - name: Conformance tests must be driven only by VAULT_ADDR
-        run: |
-          set -euo pipefail
-          if grep -rIn 'docker' local/tests/conformance/ | grep -vE ':\s*#'; then
-            echo "FAIL: conformance tests reference docker."
-            echo "Runtime-specific assertions belong in local/tests/runtime-test.sh."
-            exit 1
-          fi
 
   security:
     name: secret scan and CE guard
@@ -113,7 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           if grep -rInE '(password|secret|api_key)\s*[:=]\s*"[A-Za-z0-9]{16,}"' \
-               local/scripts local/tests internal 2>/dev/null \
+               local internal 2>/dev/null \
                | grep -viE 'FAKE-|local-dev-|\{\{|\$\{|not-a-real'; then
             echo "FAIL: an unlabelled credential-shaped literal was found"
             exit 1

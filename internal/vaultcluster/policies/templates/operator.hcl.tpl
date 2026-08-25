@@ -15,6 +15,10 @@ path "sys/mounts" {
   capabilities = ["read", "sudo"]
 }
 
+path "sys/mounts/@@DATABASE_MOUNT@@" {
+  capabilities = ["create", "update", "sudo"]
+}
+
 path "sys/mounts/*" {
   capabilities = ["read"]
 }
@@ -49,6 +53,10 @@ path "@@DATABASE_MOUNT@@/roles" {
 
 path "@@DATABASE_MOUNT@@/roles/*" {
   capabilities = ["read"]
+}
+
+path "@@DATABASE_MOUNT@@/config/*" {
+  capabilities = ["create", "update", "read"]
 }
 
 path "sys/leases/lookup" {

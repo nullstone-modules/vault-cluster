@@ -2,8 +2,8 @@
 # ./reset.sh --yes  destroy volumes and unseal keys.
 set -euo pipefail
 
-# shellcheck source=bootstrap/lib.sh
-. "$(dirname -- "${BASH_SOURCE[0]}")/bootstrap/lib.sh"
+# shellcheck source=lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 
 CONFIRMED=false
 KEEP_BOOTSTRAP=false

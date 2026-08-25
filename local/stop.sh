@@ -2,8 +2,8 @@
 # Stop containers. Named volumes are kept.
 set -euo pipefail
 
-# shellcheck source=bootstrap/lib.sh
-. "$(dirname -- "${BASH_SOURCE[0]}")/bootstrap/lib.sh"
+# shellcheck source=lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 
 case "${1:-}" in
   -h|--help) sed -n '2,2p' "${BASH_SOURCE[0]}"; exit 0 ;;

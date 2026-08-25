@@ -12,10 +12,10 @@ env:
   VAULT_ADDR: http://127.0.0.1:8200
 
 jobs:
-  isolation:
-    name: isolation (go)
+  go:
+    name: go tests (docker)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -23,8 +23,8 @@ jobs:
         with:
           go-version: "1.23.x"
 
-      - name: Isolation matrix (HTTP 403)
-        run: go test ./internal/vaultcluster -count=1 -timeout 12m -run TestIsolationMatrix
+      - name: Isolation and credentials
+        run: go test ./internal/vaultcluster -count=1 -timeout 15m
 
   stack:
     name: compose one-shot
@@ -54,7 +54,7 @@ jobs:
 
       - name: Local runtime tests
         working-directory: local
-        run: ./tests/runtime-test.sh
+        run: ./runtime-test.sh
 
       - name: Capture diagnostics on failure
         if: failure()
@@ -71,81 +71,6 @@ jobs:
           path: |
             /tmp/vault.log
             /tmp/services.log
-          retention-days: 3
-
-      - name: Tear down
-        if: always()
-        working-directory: local
-        run: ./reset.sh --yes || true
-
-  credentials:
-    name: dynamic credentials
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: stack
-    env:
-      ENABLE_DYNAMIC_CREDENTIALS: "true"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Prepare environment
-        working-directory: local
-        run: cp .env.example .env
-
-      - name: Setup with PostgreSQL
-        working-directory: local
-        run: ./setup.sh --with-credentials
-
-      - name: Full conformance
-        working-directory: local
-        env:
-          PSQL_CMD: docker compose exec -T postgres psql
-          DB_TEST_HOST: localhost
-          DB_TEST_NAME: appdb
-          DB_ADMIN_USER: postgres
-          DB_ADMIN_PASSWORD: local-dev-only-not-a-real-secret
-          AUDIT_READ_CMD: docker compose exec -T vault cat /vault/logs/audit.log
-        run: |
-          set -euo pipefail
-          export VAULT_TOKEN="$(cat .bootstrap/provisioning.token)"
-          ./tests/run-conformance.sh --layer all
-
-      - name: Final residue check
-        working-directory: local
-        run: |
-          set -euo pipefail
-          leftover="$(docker compose exec -T postgres psql \
-            "postgresql://postgres:local-dev-only-not-a-real-secret@localhost:5432/appdb" \
-            -tAc "SELECT count(*) FROM pg_roles WHERE rolname LIKE 'v-%';" | tr -d '[:space:]')"
-          echo "vault-created roles remaining: ${leftover}"
-          if [ "${leftover}" != "0" ]; then
-            docker compose exec -T postgres psql \
-              "postgresql://postgres:local-dev-only-not-a-real-secret@localhost:5432/appdb" \
-              -c "SELECT rolname, rolvaliduntil FROM pg_roles WHERE rolname LIKE 'v-%';"
-            echo "NOTE: roles remain. Acceptable only if backed by live leases."
-          fi
-
-      - name: Capture diagnostics on failure
-        if: failure()
-        working-directory: local
-        run: |
-          docker compose exec -T vault cat /vault/logs/audit.log > /tmp/audit.json || true
-          docker compose logs > /tmp/services.log 2>&1 || true
-          docker compose exec -T postgres psql \
-            "postgresql://postgres:local-dev-only-not-a-real-secret@localhost:5432/appdb" \
-            -c "SELECT rolname, rolvaliduntil FROM pg_roles WHERE rolname LIKE 'v-%';" \
-            > /tmp/pg_roles.txt 2>&1 || true
-
-      - name: Upload diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: credentials-diagnostics
-          path: |
-            /tmp/audit.json
-            /tmp/services.log
-            /tmp/pg_roles.txt
           retention-days: 3
 
       - name: Tear down

@@ -42,7 +42,7 @@ Implemented:
 - Optional PostgreSQL dynamic credentials
 - File audit on a volume separate from Raft
 - Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
-- Isolation tests in Go (`go test`); credentials conformance still in bash
+- Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
 
 Not implemented:
 
@@ -73,7 +73,7 @@ Docker Compose
   +-- PostgreSQL    (Compose profile `credentials` only)
 ```
 
-`local/scripts` and `local/tests/conformance` talk to Vault over HTTP (`VAULT_ADDR`). They must not name Docker, clouds, or host paths. Isolation runs Vault alone. PostgreSQL starts only with `--with-credentials`.
+Isolation and credentials tests are Go (`go test ./internal/vaultcluster`). Isolation runs Vault alone. PostgreSQL starts only with `--with-credentials`.
 
 ## Repository layout
 
@@ -85,7 +85,7 @@ vault-cluster/
 ├── Dockerfile            vault-utils image
 ├── cmd/                  Go app entrypoints (vault-utils CLI)
 ├── internal/             Go libraries, policy templates, lint fixtures
-├── local/                Compose target, bash helpers, conformance
+├── local/                Compose target, setup, snapshots
 ├── aws/                  Nullstone Terraform module (not yet implemented)
 ├── gcp/                  Nullstone Terraform module (not yet implemented)
 └── azure/                Nullstone Terraform module (not yet implemented)
@@ -148,18 +148,15 @@ Run from the repository root unless noted. Destructive commands require `--yes`.
 | `./setup.sh` | no | Start, init (first time), unseal, configure, synthetic tenants |
 | `./setup.sh --with-credentials` | no | Same, plus PostgreSQL and the database engine |
 | `./local/stop.sh` | no | Stop containers. Keeps all data. |
-| `./local/bootstrap/up.sh` | no | Start Vault, then run the one-shot bootstrap |
-| `./local/bootstrap/health.sh` | no | Health with a reason for each failure |
-| `./local/bootstrap/snapshot.sh take` | no | Raft snapshot plus SHA-256 |
-| `./local/bootstrap/snapshot.sh restore <file> --yes` | yes | Replaces all Vault state |
+| `./local/snapshot.sh take` | no | Raft snapshot plus SHA-256 |
+| `./local/snapshot.sh restore <file> --yes` | yes | Replaces all Vault state |
 | `./local/reset.sh --yes` | yes | Destroys volumes and unseal keys |
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenant-create <id>` | no | Onboard a tenant |
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenant-offboard <id> --yes` | yes (access) | Revoke access; secrets kept |
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenant-offboard <id> --yes --purge-secrets` | yes | Also destroy secret versions |
 | `go test -short ./...` | no | Unit tests (tenant ID, policy lint, render) |
-| `go test ./internal/vaultcluster -run TestIsolationMatrix` | no | Isolation matrix (needs Docker) |
-| `./local/tests/run-conformance.sh --layer all` | no | Credentials plus isolation against a running Vault |
-| `./local/tests/runtime-test.sh` | no | Persistence and one-shot unseal after restart |
+| `go test ./internal/vaultcluster` | no | Isolation and credentials (needs Docker) |
+| `./local/runtime-test.sh` | no | Persistence and one-shot unseal after restart |
 
 ## Tenant isolation
 
@@ -219,8 +216,6 @@ Cross-tenant, wildcard, and traversal reads return HTTP 403. That is the isolati
 ## Health
 
 ```bash
-./local/bootstrap/health.sh
-
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8200/v1/sys/health
 ```
 
@@ -253,16 +248,16 @@ Keep the matching `vault-init.json` with each snapshot. After restore, Vault uns
 
 ```bash
 cd local
-./bootstrap/snapshot.sh take
-./bootstrap/snapshot.sh list
-./bootstrap/snapshot.sh verify .bootstrap/backups/vault-<stamp>.snap
+./snapshot.sh take
+./snapshot.sh list
+./snapshot.sh verify .bootstrap/backups/vault-<stamp>.snap
 ```
 
 ### Restore (destructive)
 
 ```bash
 cd local
-./bootstrap/snapshot.sh restore .bootstrap/backups/vault-<stamp>.snap --yes
+./snapshot.sh restore .bootstrap/backups/vault-<stamp>.snap --yes
 ./setup.sh
 ```
 
@@ -275,15 +270,15 @@ export VAULT_ADDR=http://127.0.0.1:8200
 export VAULT_TOKEN=$(cat .bootstrap/provisioning.token)
 docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenant-create tenant-a
 
-./bootstrap/snapshot.sh take
+./snapshot.sh take
 cp .bootstrap/vault-init.json /tmp/keys-at-snapshot.json
 
 docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenant-create tenant-drill
 ./reset.sh --yes
 
-./bootstrap/up.sh
+./setup.sh
 cp /tmp/keys-at-snapshot.json .bootstrap/vault-init.json
-./bootstrap/snapshot.sh restore .bootstrap/backups/vault-<stamp>.snap --yes
+./snapshot.sh restore .bootstrap/backups/vault-<stamp>.snap --yes
 ./setup.sh
 go test ./internal/vaultcluster -run TestIsolationMatrix
 ```
@@ -294,7 +289,7 @@ Expected: `tenant-a` exists, `tenant-drill` does not, isolation suite passes.
 
 The Raft volume cannot be unsealed. Data is gone. That is Shamir working. Restore from a snapshot that still has its matching keys, or run `./local/reset.sh --yes` and start empty.
 
-PostgreSQL is not in the Vault snapshot. Dynamic credentials are re-issued. The fixture schema is recreated by `local/postgres/init.sh` on a fresh volume.
+PostgreSQL is not in the Vault snapshot. Dynamic credentials are re-issued.
 
 ## Break-glass
 
@@ -323,17 +318,9 @@ curl -s -X DELETE "${VAULT_ADDR}/v1/sys/generate-root/attempt"
 ```bash
 go test -short ./...
 
-go test ./internal/vaultcluster -run TestIsolationMatrix
+go test ./internal/vaultcluster
 
-./setup.sh --with-credentials
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN=$(cat local/.bootstrap/provisioning.token)
-ENABLE_DYNAMIC_CREDENTIALS=true \
-  PSQL_CMD='docker compose -f local/docker-compose.yml --env-file local/.env exec -T postgres psql' \
-  AUDIT_READ_CMD='docker compose -f local/docker-compose.yml --env-file local/.env exec -T vault cat /vault/logs/audit.log' \
-  ./local/tests/run-conformance.sh --layer all
-
-cd local && ./tests/runtime-test.sh
+cd local && ./runtime-test.sh
 ```
 
 Denials must be HTTP 403. A 404 is a different failure.

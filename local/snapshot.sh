@@ -17,30 +17,20 @@ operator_token() {
 cmd_take() {
   ensure_bootstrap_dir
   mkdir -p "${BACKUP_DIR}"; chmod 700 "${BACKUP_DIR}"
-
   vault_is_sealed && die "Vault is sealed - unseal it before taking a snapshot"
-
   local stamp file
   stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
   file="${BACKUP_DIR}/vault-${stamp}.snap"
-
   info "taking Raft snapshot"
-  # A snapshot contains every secret in the cluster. It is created under a
-  # restrictive umask for the same reason the unseal keys are.
   (
     umask 077
     curl -sf --max-time 120 \
       --header "X-Vault-Token: $(operator_token)" \
       "${VAULT_ADDR}/v1/sys/storage/raft/snapshot" -o "${file}"
   ) || die "snapshot failed"
-
   [ -s "${file}" ] || { rm -f "${file}"; die "snapshot file is empty - refusing to keep it"; }
-
-  # Written at creation time, so corruption in storage or transfer is
-  # detectable later rather than at restore time.
   shasum -a 256 "${file}" | awk '{print $1}' > "${file}.sha256"
   chmod 600 "${file}.sha256"
-
   info "snapshot written: ${file}"
   info "  size     $(wc -c < "${file}" | tr -d ' ') bytes"
   info "  sha256   $(cat "${file}.sha256")"
@@ -60,29 +50,19 @@ cmd_verify() {
   local file="${1:?usage: snapshot.sh verify <file>}"
   [ -f "${file}" ] || die "no such snapshot: ${file}"
   [ -f "${file}.sha256" ] || die "no checksum beside ${file} - integrity cannot be established"
-
   local expected actual
   expected="$(cat "${file}.sha256")"
   actual="$(shasum -a 256 "${file}" | awk '{print $1}')"
-
   [ "${expected}" = "${actual}" ] || die "CHECKSUM MISMATCH - this snapshot is corrupt and must not be restored
      expected ${expected}
      actual   ${actual}"
-
   info "checksum OK: ${file}"
-
-  # Integrity is not usability. Confirming the file is a real snapshot needs a
-  # restore into a throwaway cluster, which is a documented drill rather than
-  # something this script does implicitly.
-  warn "checksum only proves the file is unchanged, not that it restores."
-  warn "See runbooks/backup-restore.md for the restore drill."
 }
 
 cmd_restore() {
   local file="${1:-}" confirmed="${2:-}"
   [ -n "${file}" ] || die "usage: snapshot.sh restore <file> --yes"
   [ -f "${file}" ] || die "no such snapshot: ${file}"
-
   if [ "${confirmed}" != "--yes" ]; then
     cat >&2 <<EOF
 Refusing to restore without explicit confirmation.
@@ -98,9 +78,7 @@ Re-run with:  ./snapshot.sh restore ${file} --yes
 EOF
     exit 1
   fi
-
   [ -f "${file}.sha256" ] && cmd_verify "${file}"
-
   info "restoring ${file} - this replaces all cluster data"
   curl -sf --max-time 300 \
     --header "X-Vault-Token: $(operator_token)" \
@@ -108,10 +86,9 @@ EOF
     --data-binary "@${file}" \
     "${VAULT_ADDR}/v1/sys/storage/raft/snapshot-force" >/dev/null \
     || die "restore failed"
-
   info "restore submitted; Vault will seal"
   info "unseal with the key shares that were current when this snapshot was taken:"
-  info "  ../setup.sh"
+  info "  ./setup.sh"
 }
 
 case "${1:-}" in

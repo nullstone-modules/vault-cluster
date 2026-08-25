@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -80,6 +81,9 @@ func (c *Client) RunLocalBootstrap(opts LocalBootstrap) error {
 		c.API.SetToken(tok)
 		if _, err := c.API.Auth().Token().LookupSelf(); err == nil {
 			c.Cfg.Token = tok
+			if err := c.enableCredentialsIfNeeded(opts.Dir); err != nil {
+				return err
+			}
 			for _, id := range opts.TenantIDs {
 				if err := c.CreateTenant(id, false); err != nil {
 					return err
@@ -135,6 +139,31 @@ func (c *Client) RunLocalBootstrap(opts LocalBootstrap) error {
 		log.Printf("revoked the initial root token")
 	}
 	return chownBootstrap(opts.Dir)
+}
+
+func (c *Client) enableCredentialsIfNeeded(dir string) error {
+	if !c.Cfg.EnableCredentials || c.databaseMounted() {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "operator.token"))
+	if err != nil {
+		return fmt.Errorf("database engine is not mounted; operator token missing")
+	}
+	op := c.WithToken(strings.TrimSpace(string(raw)))
+	if err := op.mountDatabase(); err != nil {
+		return fmt.Errorf("enable database engine: %w", err)
+	}
+	log.Printf("enabled database engine")
+	return nil
+}
+
+func (c *Client) databaseMounted() bool {
+	mounts, err := c.API.Sys().ListMounts()
+	if err != nil {
+		return false
+	}
+	_, ok := mounts[c.Cfg.DatabaseMount+"/"]
+	return ok
 }
 
 func (c *Client) unsealFromFile(path string, threshold int) error {

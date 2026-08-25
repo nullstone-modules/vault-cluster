@@ -12,7 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   for a `vault-utils` image (local-bootstrap, configure, tenant-create,
   tenant-offboard, health).
 - `go test -short ./...` for tenant-id and policy lint; `TestIsolationMatrix`
-  runs a throwaway Vault CE container and asserts isolation denials as HTTP 403.
+  and `TestCredentialsMatrix` run throwaway Vault CE (and Postgres) containers.
 
 ### Changed
 
@@ -22,26 +22,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `docker compose run --rm bootstrap`.
 - `.github/workflows/validate.yml`: unit checks are `go test -short ./...`.
   Compose job requires `bootstrap` as a default service and forbids `unseal`.
-- `.github/workflows/test-local.yml`: isolation is `go test`; Compose one-shot
-  and credentials remain separate jobs.
+- `.github/workflows/test-local.yml`: isolation and credentials are `go test`;
+  Compose one-shot is a separate job.
 - Local operators use `vault-utils` for tenant create and offboard.
-- `local/tests/runtime-test.sh`: asserts bootstrap is not long-running; after
+- `local/runtime-test.sh`: asserts bootstrap is not long-running; after
   restart, re-runs the one-shot to unseal and checks Raft persistence.
-- `local/setup.sh`, `local/bootstrap/up.sh`: start PostgreSQL when
+- `local/setup.sh`: start PostgreSQL when
   `ENABLE_DYNAMIC_CREDENTIALS` is already true in `.env`, not only when
   `--with-credentials` is passed.
 - Trim comments in files touched by this work.
 - Policy templates moved to `internal/vaultcluster/policies`. Lint fixtures
-  moved to `internal/vaultcluster/testdata/lint`. Bash helpers and conformance
-  moved to `local/scripts` and `local/tests`.
+  moved to `internal/vaultcluster/testdata/lint`.
+- Lint and conformance are Go tests in `internal/vaultcluster`
+  (`TestIsolationMatrix`, `TestCredentialsMatrix`).
+- Compose helpers are `local/lib.sh`, `local/setup.sh`, `local/snapshot.sh`.
+  Vault bootstrap is only `vault-utils local-bootstrap`.
+- `local/setup.sh` rebuilds the `vault-utils` image before bootstrap so the
+  one-shot matches the current source.
+- `local/postgres/init.sh` creates `vault_admin` and privilege roles only.
 
 ### Removed
 
 - `local/bootstrap/compose-unseal.sh` (long-running Shamir sidecar).
 - `local/bootstrap/bootstrap.sh` (bash local bootstrap).
 - `config/`, `scripts/`, and `tests/` (contents relocated).
+- `local/bootstrap/` (Compose helpers moved to `local/`).
+- `local/scripts/` and bash lint/conformance under `local/tests/`.
+- Demo `app.customers` / `app.orders` schema in `local/postgres/init.sh`.
 
 ### Fixed
+
+- `internal/vaultcluster/local.go`: `./setup.sh --with-credentials` after an
+  isolation bootstrap mounts the database engine with the operator token
+  instead of skipping Configure and 404ing on `database/roles`.
+- `internal/vaultcluster/policies/templates/operator.hcl.tpl`: operator can
+  create the database mount and connection so credentials can be enabled
+  after root is revoked.
 
 - `internal/vaultcluster/isolation_test.go` - parse the container ID from
   `docker run` stdout only. Combined stdout/stderr included image-pull noise

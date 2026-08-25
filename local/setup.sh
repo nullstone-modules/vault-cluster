@@ -2,8 +2,8 @@
 # ./setup.sh [--with-credentials]
 set -euo pipefail
 
-# shellcheck source=bootstrap/lib.sh
-. "$(dirname -- "${BASH_SOURCE[0]}")/bootstrap/lib.sh"
+# shellcheck source=lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 
 WITH_CREDENTIALS=false
 while [ $# -gt 0 ]; do
@@ -39,11 +39,9 @@ else
 fi
 
 info "running vault-utils bootstrap"
-compose run --rm --no-deps bootstrap
+compose run --build --rm --no-deps bootstrap
 
 wait_for_unsealed 60 || die "Vault is still sealed after bootstrap"
-
-"${ADAPTER_DIR}/bootstrap/health.sh"
 
 cat >&2 <<EOF
 
