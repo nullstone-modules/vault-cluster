@@ -9,7 +9,7 @@ import (
 
 func TestLintFixtures(t *testing.T) {
 	cfg := Config{KVMount: "kv", TenantPrefix: "customers", DatabaseMount: "database", AuthMount: "approle"}
-	root := filepath.Join("..", "..", "tests", "lint", "fixtures")
+	root := filepath.Join("testdata", "lint")
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		t.Fatal(err)

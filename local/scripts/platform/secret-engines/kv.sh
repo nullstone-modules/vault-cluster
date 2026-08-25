@@ -3,10 +3,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../scripts/lib/common.sh
-. "${SCRIPT_DIR}/../../scripts/lib/common.sh"
-# shellcheck source=../../scripts/lib/vault.sh
-. "${SCRIPT_DIR}/../../scripts/lib/vault.sh"
+# shellcheck source=../../lib/common.sh
+. "${SCRIPT_DIR}/../../lib/common.sh"
+# shellcheck source=../../lib/vault.sh
+. "${SCRIPT_DIR}/../../lib/vault.sh"
 
 platform_defaults
 vault_require_env

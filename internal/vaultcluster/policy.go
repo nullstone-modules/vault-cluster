@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nullstone-modules/vault-cluster/config/policies"
+	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster/policies"
 )
 
 func RenderPolicy(templateName, tenantID string, cfg Config) (string, error) {

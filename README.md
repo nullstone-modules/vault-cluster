@@ -73,9 +73,7 @@ Docker Compose
   +-- PostgreSQL    (Compose profile `credentials` only)
 ```
 
-`config/`, `scripts/`, and `tests/` use HTTP to Vault. They must not name Docker, clouds, or host paths. `local/` owns Compose, volumes, and where unseal keys live. Shared bootstrap logic lives in `internal/vaultcluster` and the `vault-utils` CLI.
-
-Isolation runs Vault alone. PostgreSQL starts only with `--with-credentials`.
+`local/scripts` and `local/tests/conformance` talk to Vault over HTTP (`VAULT_ADDR`). They must not name Docker, clouds, or host paths. Isolation runs Vault alone. PostgreSQL starts only with `--with-credentials`.
 
 ## Repository layout
 
@@ -84,16 +82,13 @@ vault-cluster/
 ├── README.md
 ├── CHANGELOG.md
 ├── setup.sh
-├── Dockerfile       vault-utils image
-├── cmd/vault-utils  CLI: local-bootstrap, configure, tenant-create, tenant-offboard, health
-├── internal/vaultcluster
-├── config/          policies, AppRole, KV, database engine, audit
-├── scripts/         bash helpers (credentials conformance still uses these)
-├── tests/           bash conformance and policy-lint fixtures
-├── local/           Compose, one-shot bootstrap, snapshots, runtime tests
-├── aws/
-├── gcp/
-└── azure/
+├── Dockerfile            vault-utils image
+├── cmd/                  Go app entrypoints (vault-utils CLI)
+├── internal/             Go libraries, policy templates, lint fixtures
+├── local/                Compose target, bash helpers, conformance
+├── aws/                  Nullstone Terraform module (not yet implemented)
+├── gcp/                  Nullstone Terraform module (not yet implemented)
+└── azure/                Nullstone Terraform module (not yet implemented)
 ```
 
 ## Prerequisites
@@ -163,7 +158,7 @@ Run from the repository root unless noted. Destructive commands require `--yes`.
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenant-offboard <id> --yes --purge-secrets` | yes | Also destroy secret versions |
 | `go test -short ./...` | no | Unit tests (tenant ID, policy lint, render) |
 | `go test ./internal/vaultcluster -run TestIsolationMatrix` | no | Isolation matrix (needs Docker) |
-| `./tests/run-conformance.sh --layer all` | no | Credentials plus isolation against a running Vault |
+| `./local/tests/run-conformance.sh --layer all` | no | Credentials plus isolation against a running Vault |
 | `./local/tests/runtime-test.sh` | no | Persistence and one-shot unseal after restart |
 
 ## Tenant isolation
@@ -336,7 +331,7 @@ export VAULT_TOKEN=$(cat local/.bootstrap/provisioning.token)
 ENABLE_DYNAMIC_CREDENTIALS=true \
   PSQL_CMD='docker compose -f local/docker-compose.yml --env-file local/.env exec -T postgres psql' \
   AUDIT_READ_CMD='docker compose -f local/docker-compose.yml --env-file local/.env exec -T vault cat /vault/logs/audit.log' \
-  ./tests/run-conformance.sh --layer all
+  ./local/tests/run-conformance.sh --layer all
 
 cd local && ./tests/runtime-test.sh
 ```

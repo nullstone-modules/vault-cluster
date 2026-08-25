@@ -31,7 +31,7 @@ local/audit/
 local/backups/
 
 # Generated policies.
-config/policies/rendered/
+local/.rendered-policies/
 *.rendered.hcl
 
 # Secrets and local env.

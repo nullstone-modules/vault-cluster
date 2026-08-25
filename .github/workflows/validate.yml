@@ -35,21 +35,18 @@ jobs:
       - name: Lint all shell scripts
         run: |
           set -euo pipefail
-          mapfile -t files < <(find config scripts tests local -name '*.sh' | sort)
+          mapfile -t files < <(find . -path ./.git -prune -o -name '*.sh' -print | sed 's|^\./||' | sort)
           printf 'checking %d scripts\n' "${#files[@]}"
-          # -x follows sourced files, so cross-file problems are caught too.
           shellcheck -x --severity=warning --shell=bash "${files[@]}"
 
       - name: Every script must be executable
         run: |
           set -euo pipefail
-          # A non-executable script fails at the least convenient moment, in
-          # someone else's environment, with a confusing error.
           fail=0
           while IFS= read -r f; do
             case "$f" in */lib/*|*/lib.sh|*/common/*) continue ;; esac
             [ -x "$f" ] || { echo "not executable: $f"; fail=1; }
-          done < <(find config scripts tests local -name '*.sh' | sort)
+          done < <(find . -path ./.git -prune -o -name '*.sh' -print | sed 's|^\./||' | sort)
           exit "$fail"
 
   architecture:
@@ -58,22 +55,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: shared config/scripts/tests must not reference any runtime
-        # Shared config must not depend on a runtime. Enforced mechanically.
-        # A rule checked only at review time erodes; this fails the build.
+      - name: HTTP-only trees must not reference any runtime
         run: |
           set -euo pipefail
           fail=0
           check() {
             local pattern="$1" label="$2"
-            if grep -rInE "$pattern" config/ scripts/ tests/ --include='*.sh' --include='*.tpl' --include='*.hcl' \
+            if grep -rInE "$pattern" \
+                 internal/vaultcluster/policies \
+                 local/scripts \
+                 local/tests/conformance \
+                 local/tests/lint \
+                 --include='*.sh' --include='*.tpl' --include='*.hcl' \
                  | grep -vE '^\s*[^:]+:[0-9]+:\s*#' ; then
-              echo "FAIL: shared tree references $label"
+              echo "FAIL: HTTP-only tree references $label"
               fail=1
             fi
           }
-          # Comment lines are excluded above: the prohibition is on depending
-          # on a runtime, not on explaining why the rule exists.
           check '\bdocker\b'              'docker'
           check '\bdocker[- ]compose\b'   'docker compose'
           check 'vault-cluster-(vault|postgres)'  'container names'
@@ -83,9 +81,9 @@ jobs:
       - name: Conformance tests must be driven only by VAULT_ADDR
         run: |
           set -euo pipefail
-          if grep -rIn 'docker' tests/conformance/ | grep -vE ':\s*#'; then
+          if grep -rIn 'docker' local/tests/conformance/ | grep -vE ':\s*#'; then
             echo "FAIL: conformance tests reference docker."
-            echo "Runtime-specific assertions belong in local/tests/."
+            echo "Runtime-specific assertions belong in local/tests/runtime-test.sh."
             exit 1
           fi
 
@@ -99,14 +97,12 @@ jobs:
         run: |
           set -euo pipefail
           fail=0
-          # Names first: these files must never exist in the tree at all.
           while IFS= read -r f; do
             echo "FAIL: bootstrap material committed: $f"; fail=1
           done < <(find . -path ./.git -prune -o \
                      \( -name 'vault-init.json' -o -name '*.snap' \
                         -o -name '*.token' -o -name 'unseal*' \) -print)
 
-          # Then content: an unseal key or root token pasted into a doc.
           if grep -rInE 'hvs\.[A-Za-z0-9_-]{20,}|"root_token"\s*:\s*"hvs' . \
                --exclude-dir=.git --exclude=CHANGELOG.md; then
             echo "FAIL: what looks like a real Vault token is committed"; fail=1
@@ -114,32 +110,26 @@ jobs:
           exit "$fail"
 
       - name: Fake credentials are labelled as fake
-        # Fixture values that look plausible eventually get copied somewhere
-        # real. Everything in this repo is prefixed FAKE- or local-dev-.
         run: |
           set -euo pipefail
           if grep -rInE '(password|secret|api_key)\s*[:=]\s*"[A-Za-z0-9]{16,}"' \
-               config/ scripts/ tests/ 2>/dev/null \
+               local/scripts local/tests internal 2>/dev/null \
                | grep -viE 'FAKE-|local-dev-|\{\{|\$\{|not-a-real'; then
             echo "FAIL: an unlabelled credential-shaped literal was found"
             exit 1
           fi
 
       - name: No Vault Enterprise features are used
-        # Community Edition only. An Enterprise-only endpoint
-        # works against a trial binary and fails on the licensed-out one, which
-        # is the worst possible time to find out.
         run: |
           set -euo pipefail
           fail=0
-          # sys/namespaces, control groups, performance replication, Sentinel.
           if grep -rInE 'sys/namespaces|X-Vault-Namespace|sys/replication|sys/control-group|sentinel' \
-               config/ scripts/ tests/ local/ cmd/ internal/ --include='*.sh' --include='*.hcl' --include='*.tpl' --include='*.go' \
+               local/ cmd/ internal/ --include='*.sh' --include='*.hcl' --include='*.tpl' --include='*.go' \
                | grep -vE ':\s*#' | grep -v 'VAULT_NAMESPACE'; then
             echo "FAIL: Vault Enterprise-only feature referenced (Community Edition only)"
             fail=1
           fi
-          if grep -rIn 'hashicorp/vault-enterprise' config scripts tests local --exclude-dir=.git; then
+          if grep -rIn 'hashicorp/vault-enterprise' local cmd internal --exclude-dir=.git; then
             echo "FAIL: Enterprise image referenced"; fail=1
           fi
           exit "$fail"

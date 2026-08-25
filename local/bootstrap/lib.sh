@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for the local Docker target.
-#
-# Sourced, not executed. Callers set their own `set -euo pipefail`.
-#
-# Everything Docker-specific in this repository lives under local/. A helper
-# needed inside config/, scripts/, or tests/ is a signal the logic belongs
-# there instead, or should be expressed against VAULT_ADDR rather than against
-# a container.
-
+# Sourced by local bootstrap and runtime tests. Callers set `set -euo pipefail`.
 # shellcheck shell=bash
 
 ADAPTER_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"

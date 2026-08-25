@@ -51,7 +51,7 @@ fi
 
 sec "Dev mode is not in use"
 
-if compose config 2>/dev/null | grep -qE '(-dev\b|VAULT_DEV_ROOT_TOKEN_ID)'; then
+if compose config 2>/dev/null | grep -qE 'VAULT_DEV_|["'\''[:space:]]-dev(["'\''[:space:]]|$)'; then
   no "no dev-mode configuration present" "found dev-mode settings in the Compose configuration"
 else
   ok "no dev-mode configuration present"
@@ -126,7 +126,7 @@ if [ ! -f "${OPERATOR_TOKEN_FILE}" ]; then
 else
   export VAULT_TOKEN; VAULT_TOKEN="$(cat "${OPERATOR_TOKEN_FILE}")"
   # shellcheck source=/dev/null
-  . "${REPO_ROOT}/tests/conformance/common/setup.sh"
+  . "${ADAPTER_DIR}/tests/conformance/common/setup.sh"
 
   if WRITER_TOKEN="$(approle_login "tenant-tenant-a-writer" 2>/dev/null)"; then
     if curl -s -o /dev/null -w '%{http_code}' \

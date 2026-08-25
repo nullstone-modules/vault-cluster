@@ -109,7 +109,7 @@ jobs:
         run: |
           set -euo pipefail
           export VAULT_TOKEN="$(cat .bootstrap/provisioning.token)"
-          ../tests/run-conformance.sh --layer all
+          ./tests/run-conformance.sh --layer all
 
       - name: Final residue check
         working-directory: local

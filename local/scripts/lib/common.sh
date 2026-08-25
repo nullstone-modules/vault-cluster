@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
-REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-CONFIG_DIR="${REPO_ROOT}/config"
-TESTS_DIR="${REPO_ROOT}/tests"
-POLICY_TEMPLATE_DIR="${CONFIG_DIR}/policies/templates"
-RENDERED_POLICY_DIR="${CONFIG_DIR}/policies/rendered"
+LOCAL_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO_ROOT="$(cd -- "${LOCAL_DIR}/.." && pwd)"
+CONFIG_DIR="${LOCAL_DIR}/scripts/platform"
+TESTS_DIR="${LOCAL_DIR}/tests"
+POLICY_TEMPLATE_DIR="${REPO_ROOT}/internal/vaultcluster/policies/templates"
+RENDERED_POLICY_DIR="${LOCAL_DIR}/.rendered-policies"
 
-export REPO_ROOT CONFIG_DIR TESTS_DIR POLICY_TEMPLATE_DIR RENDERED_POLICY_DIR
+export REPO_ROOT LOCAL_DIR CONFIG_DIR TESTS_DIR POLICY_TEMPLATE_DIR RENDERED_POLICY_DIR
 
 info() { printf '[config] %s\n'        "$*" >&2; }
 warn() { printf '[config] WARN: %s\n'  "$*" >&2; }

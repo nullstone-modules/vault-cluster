@@ -31,11 +31,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ENABLE_DYNAMIC_CREDENTIALS` is already true in `.env`, not only when
   `--with-credentials` is passed.
 - Trim comments in files touched by this work.
+- Policy templates moved to `internal/vaultcluster/policies`. Lint fixtures
+  moved to `internal/vaultcluster/testdata/lint`. Bash helpers and conformance
+  moved to `local/scripts` and `local/tests`.
 
 ### Removed
 
 - `local/bootstrap/compose-unseal.sh` (long-running Shamir sidecar).
 - `local/bootstrap/bootstrap.sh` (bash local bootstrap).
+- `config/`, `scripts/`, and `tests/` (contents relocated).
 
 ### Fixed
 
@@ -46,6 +50,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   owner so host `jq` can read it on Linux CI (root-owned mode 600).
 - `.github/workflows/validate.yml` - enable the credentials profile with
   `COMPOSE_PROFILES` and `--env-file` so postgres is visible in `compose config`.
+- `local/tests/runtime-test.sh`: Vault `-dev` check no longer matches
+  `local-dev-only` password strings.
 - `local/vault/config.hcl`: `disable_mlock = true` so Vault starts in Compose
   and GitHub Actions (`Failed to lock memory: cannot allocate memory`).
 - `.github/workflows/validate.yml`: CE image grep no longer matches the

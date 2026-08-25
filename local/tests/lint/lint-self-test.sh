@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 LINTER="${SCRIPT_DIR}/policy-lint.sh"
-FIXTURE_DIR="${SCRIPT_DIR}/fixtures"
+FIXTURE_DIR="$(cd -- "${SCRIPT_DIR}/../../../internal/vaultcluster/testdata/lint" && pwd)"
 
 PASSED=0
 FAILED=0
