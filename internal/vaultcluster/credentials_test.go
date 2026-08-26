@@ -2,9 +2,7 @@ package vaultcluster
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -99,21 +97,23 @@ func TestCredentialsAfterIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dir := t.TempDir()
-	if err := c.issueOrphanToken("operator", filepath.Join(dir, "operator.token")); err != nil {
-		t.Fatal(err)
+	store := FileKeyStore{Dir: t.TempDir()}
+	for _, name := range []string{"operator", "provisioning"} {
+		tok, err := c.issueOrphanToken(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.SaveToken(name, tok); err != nil {
+			t.Fatal(err)
+		}
 	}
-	provFile := filepath.Join(dir, "provisioning.token")
-	if err := c.issueOrphanToken("provisioning", provFile); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile(provFile)
+	provTok, err := store.LoadToken("provisioning")
 	if err != nil {
 		t.Fatal(err)
 	}
-	prov := c.WithToken(strings.TrimSpace(string(raw)))
+	prov := c.WithToken(provTok)
 	prov.Cfg.EnableCredentials = true
-	if err := prov.enableCredentialsIfNeeded(dir); err != nil {
+	if err := prov.enableCredentialsIfNeeded(store); err != nil {
 		t.Fatal(err)
 	}
 	if err := prov.CreateTenant("tenant-a", false); err != nil {

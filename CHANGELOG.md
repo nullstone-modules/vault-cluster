@@ -9,101 +9,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `internal/vaultcluster` Go library, `cmd/vault-utils` CLI, and root `Dockerfile`
-  for a `vault-utils` image (local-bootstrap, configure, tenant-create,
-  tenant-offboard, health).
+  for a `vault-utils` image (`bootstrap local`, `tenants create`,
+  `tenants destroy`, `snapshot`, `health`).
+- `internal/vaultcluster/keystore.go`: pluggable `KeyStore` for init key
+  material and platform tokens; `FileKeyStore` backs the local platform.
+- `internal/vaultcluster/snapshot.go`: Raft snapshot take, list, verify, and
+  restore in Go (replaces `local/snapshot.sh`). Restore requires an explicit
+  `VAULT_TOKEN` (break-glass root); the operator policy denies
+  `snapshot-force` by design.
 - `go test -short ./...` for tenant-id and policy lint; `TestIsolationMatrix`
   and `TestCredentialsMatrix` run throwaway Vault CE (and Postgres) containers.
-
-### Changed
-
-- `local/docker-compose.yml`: `bootstrap` is a default one-shot service
-  (`restart: "no"`). `docker compose up -d` starts Vault and runs bootstrap
-  once. A Vault process restart reseals until `./setup.sh` or
-  `docker compose run --rm bootstrap`.
-- `.github/workflows/validate.yml`: unit checks are `go test -short ./...`.
-  Compose job requires `bootstrap` as a default service and forbids `unseal`.
-- `.github/workflows/test-local.yml`: isolation and credentials are `go test`;
-  Compose one-shot is a separate job.
-- Local operators use `vault-utils` for tenant create and offboard.
-- `local/runtime-test.sh`: asserts bootstrap is not long-running; after
-  restart, re-runs the one-shot to unseal and checks Raft persistence.
-- `local/setup.sh`: start PostgreSQL when
-  `ENABLE_DYNAMIC_CREDENTIALS` is already true in `.env`, not only when
-  `--with-credentials` is passed.
-- Trim comments in files touched by this work.
-- Policy templates moved to `internal/vaultcluster/policies`. Lint fixtures
-  moved to `internal/vaultcluster/testdata/lint`.
-- Lint and conformance are Go tests in `internal/vaultcluster`
-  (`TestIsolationMatrix`, `TestCredentialsMatrix`).
-- Compose helpers are `local/lib.sh`, `local/setup.sh`, `local/snapshot.sh`.
-  Vault bootstrap is only `vault-utils local-bootstrap`.
-- `local/setup.sh` rebuilds the `vault-utils` image before bootstrap so the
-  one-shot matches the current source.
-- `local/postgres/init.sh` creates `vault_admin` and privilege roles only.
-
-### Removed
-
-- `local/bootstrap/compose-unseal.sh` (long-running Shamir sidecar).
-- `local/bootstrap/bootstrap.sh` (bash local bootstrap).
-- `config/`, `scripts/`, and `tests/` (contents relocated).
-- `local/bootstrap/` (Compose helpers moved to `local/`).
-- `local/scripts/` and bash lint/conformance under `local/tests/`.
-- Demo `app.customers` / `app.orders` schema in `local/postgres/init.sh`.
-
-### Fixed
-
-- `internal/vaultcluster/local.go`: `./setup.sh --with-credentials` after an
-  isolation bootstrap mounts the database engine with the operator token
-  instead of skipping Configure and 404ing on `database/roles`.
-- `internal/vaultcluster/policies/templates/operator.hcl.tpl`: operator can
-  create the database mount and connection so credentials can be enabled
-  after root is revoked.
-
-- `internal/vaultcluster/isolation_test.go` - parse the container ID from
-  `docker run` stdout only. Combined stdout/stderr included image-pull noise
-  on CI, so `docker port` failed.
-- `local/bootstrap/compose-unseal.sh` - chown `vault-init.json` to the bind-mount
-  owner so host `jq` can read it on Linux CI (root-owned mode 600).
-- `.github/workflows/validate.yml` - enable the credentials profile with
-  `COMPOSE_PROFILES` and `--env-file` so postgres is visible in `compose config`.
-- `local/tests/runtime-test.sh`: Vault `-dev` check no longer matches
-  `local-dev-only` password strings.
-- `local/vault/config.hcl`: `disable_mlock = true` so Vault starts in Compose
-  and GitHub Actions (`Failed to lock memory: cannot allocate memory`).
-- `.github/workflows/validate.yml`: CE image grep no longer matches the
-  workflow file itself.
-
-### Changed
-
-- Single root `README.md` is the operator and architecture guide. Removed
-  `vault-cluster-readme.md` and `vault-cluster-technical-doc.md`.
-- `.github/workflows` run CI on `master` and `develop` as well as `main`.
-- `tests/conformance/credentials/*`: credential suites revoke the leases they
-  issue as the tenant (provisioning cannot `revoke-prefix`). Residue scan no
-  longer treats leftover test roles as orphans.
-- `local/bootstrap/health.sh`: reports the database engine from the mount,
-  not only from `.env`.
-- `local/setup.sh`: `--with-credentials` persists `ENABLE_DYNAMIC_CREDENTIALS=true`
-  in `.env` so later health/compose runs stay consistent.
-- `local/bootstrap/bootstrap.sh`, `local/setup.sh`: `./setup.sh --with-credentials`
-  on an isolation Vault now mounts the database engine and refreshes tenant
-  roles instead of skipping as "already configured".
-- Publish only root `README.md` and `CHANGELOG.md`.
-  ADRs, design docs, runbooks, examples, and nested READMEs stay local via
-  `.gitignore`.
-- Trim essay comments and INV labels from policies, scripts, tests, and CI.
-  Keep image pins, tenant IDs, and HTTP 403 checks.
-
-### Added
-
-- `./setup.sh` one-command local start, plus a Compose `unseal` sidecar:
-  first run initializes a persistent Shamir Vault; every later start and every
-  Vault container restart unseals automatically. Local Shamir automation, not
-  production KMS auto-unseal. `./setup.sh` still configures the platform and
-  synthetic tenants on a new machine.
+- `./setup.sh` one-command local start: first run initializes a persistent
+  Shamir Vault; later starts unseal via the one-shot bootstrap. Local Shamir
+  automation, not production KMS auto-unseal.
 - ADR-0009: repository layout uses `local/`, `aws/`, `gcp/`, and `azure/` as
-  deployment targets. Shared Vault behaviour lives in `config/`, `scripts/`,
-  and `tests/`. Phase 1 implements only `local/`; cloud directories are
+  deployment targets. Phase 1 implements only `local/`; cloud directories are
   documentation stubs. There is no Terraform `source = "./${var.deployment_target}"`
   switch.
 
@@ -147,8 +67,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and digest. No dev mode, no `latest`.
 - Single-node Raft on a named volume, with audit logs on a **separate** volume,
   and the listener published to loopback only.
-- Scripts for up, down, bootstrap, health, reset, and Raft snapshot with
-  checksum. Destructive operations require an explicit flag.
 - Runtime tests for persistence across restart, volume separation, port
   binding, and digest pinning.
 
@@ -166,6 +84,85 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   guard, and enforcement of the one-way dependency rule.
 - `test-local.yml`: isolation with no database present, then credentials as a
   separate job.
+
+### Changed
+
+- `vault-utils` CLI is command/subcommand: `bootstrap local|aws|azure|gcp`
+  (cloud platforms not implemented yet), `tenants create`, `tenants destroy`,
+  `snapshot take|list|verify|restore`, `health`.
+- Bootstrap no longer creates tenants; it only initializes the cluster
+  (init, unseal, configure, issue tokens, revoke root). Tenants are created
+  with `vault-utils tenants create <id>`.
+- `BOOTSTRAP_DIR` defaults to `.bootstrap` so `vault-utils bootstrap local`
+  works on a host without Compose env vars.
+- Policy templates use Go `text/template` (`{{.KVMount}}`) instead of
+  `@@KEY@@` string replacement.
+- `local/docker-compose.yml` renamed to `local/compose.yml`; images are
+  digest-pinned inline instead of `VAULT_IMAGE` / `POSTGRES_IMAGE` env vars.
+- `bootstrap` is a default one-shot Compose service (`restart: "no"`).
+  `docker compose up -d` starts Vault and runs bootstrap once. A Vault process
+  restart reseals until `./setup.sh` or `docker compose run --rm bootstrap`.
+- `.github/workflows/validate.yml`: unit checks are `go test -short ./...`.
+  Compose job requires `bootstrap` as a default service and forbids `unseal`.
+- `.github/workflows/test-local.yml`: isolation and credentials are `go test`;
+  Compose one-shot is a separate job.
+- Local operators use `vault-utils` for tenant create and offboard.
+- `local/runtime-test.sh`: asserts bootstrap is not long-running; after
+  restart, re-runs the one-shot to unseal and checks Raft persistence. The
+  persistence probe creates its tenant explicitly.
+- `local/setup.sh`: start PostgreSQL when `ENABLE_DYNAMIC_CREDENTIALS` is
+  already true in `.env`, not only when `--with-credentials` is passed;
+  `--with-credentials` persists the flag in `.env`. Rebuilds the `vault-utils`
+  image before bootstrap so the one-shot matches the current source.
+- Policy templates moved to `internal/vaultcluster/policies`. Lint fixtures
+  moved to `internal/vaultcluster/testdata/lint`.
+- Lint and conformance are Go tests in `internal/vaultcluster`
+  (`TestIsolationMatrix`, `TestCredentialsMatrix`).
+- Compose helpers are `local/lib.sh`, `local/setup.sh`, `local/reset.sh`.
+  Vault bootstrap is only `vault-utils bootstrap local`.
+- `local/postgres/init.sh` creates `vault_admin` and privilege roles only.
+- Single root `README.md` is the operator and architecture guide. Removed
+  `vault-cluster-readme.md` and `vault-cluster-technical-doc.md`.
+- `.github/workflows` run CI on `master` and `develop` as well as `main`.
+- Credential suites revoke the leases they issue as the tenant (provisioning
+  cannot `revoke-prefix`). Residue scan no longer treats leftover test roles
+  as orphans.
+- Publish only root `README.md` and `CHANGELOG.md`. ADRs, design docs,
+  runbooks, examples, and nested READMEs stay local via `.gitignore`.
+- Trim essay comments and INV labels from policies, scripts, tests, and CI.
+  Keep image pins, tenant IDs, and HTTP 403 checks.
+
+### Removed
+
+- `local/bootstrap/compose-unseal.sh` (long-running Shamir sidecar).
+- `local/bootstrap/bootstrap.sh` (bash local bootstrap).
+- `config/`, `scripts/`, and `tests/` (contents relocated).
+- `local/bootstrap/` (Compose helpers moved to `local/`).
+- `local/scripts/` and bash lint/conformance under `local/tests/`.
+- Demo `app.customers` / `app.orders` schema in `local/postgres/init.sh`.
+- `local/snapshot.sh` (now `vault-utils snapshot`) and `local/stop.sh`
+  (documented `docker compose down`).
+
+### Fixed
+
+- `./setup.sh --with-credentials` after an isolation bootstrap mounts the
+  database engine with the operator token instead of skipping Configure and
+  404ing on `database/roles`.
+- `internal/vaultcluster/policies/templates/operator.hcl.tpl`: operator can
+  create the database mount and connection so credentials can be enabled
+  after root is revoked.
+- `internal/vaultcluster/isolation_test.go`: parse the container ID from
+  `docker run` stdout only. Combined stdout/stderr included image-pull noise
+  on CI, so `docker port` failed.
+- Bootstrap material written as root in a container is chowned to the
+  bind-mount owner so the host user can read it on Linux CI.
+- `.github/workflows/validate.yml`: enable the credentials profile with
+  `COMPOSE_PROFILES` and `--env-file` so postgres is visible in
+  `compose config`; CE image grep no longer matches the workflow file itself.
+- Runtime test: Vault `-dev` check no longer matches `local-dev-only`
+  password strings.
+- `local/vault/config.hcl`: `disable_mlock = true` so Vault starts in Compose
+  and GitHub Actions (`Failed to lock memory: cannot allocate memory`).
 
 ### Security
 

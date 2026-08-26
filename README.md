@@ -95,7 +95,7 @@ vault-cluster/
 
 Docker Desktop (Compose v2), `curl`, and `jq`. Go 1.23 for `go test`. Vault CLI is optional except break-glass decode.
 
-Images are pinned by tag and digest in `local/.env.example` (Vault 1.21.4, PostgreSQL 16.15-alpine). Never `latest`.
+Images are pinned by tag and digest in `local/compose.yml` (Vault 1.21.4, PostgreSQL 16.15-alpine). Never `latest`.
 
 ```bash
 docker --version
@@ -118,7 +118,8 @@ First run:
 4. Unseals
 5. Enables audit, KV v2, AppRole, policies
 6. Revokes the root token
-7. Onboards synthetic `tenant-a` and `tenant-b`
+
+Bootstrap only initializes the cluster. Tenants are created explicitly with `tenants create`.
 
 Later runs skip init if the provisioning token still works. A Vault process restart reseals. Unseal is a one-shot (`./setup.sh` or `docker compose run --rm bootstrap`), not a long-running sidecar. `docker compose up -d` starts Vault and runs bootstrap once, then bootstrap exits.
 
@@ -145,15 +146,15 @@ Run from the repository root unless noted. Destructive commands require `--yes`.
 
 | Command | Destructive | Purpose |
 |---|---|---|
-| `./setup.sh` | no | Start, init (first time), unseal, configure, synthetic tenants |
+| `./setup.sh` | no | Start, init (first time), unseal, configure |
 | `./setup.sh --with-credentials` | no | Same, plus PostgreSQL and the database engine |
-| `./local/stop.sh` | no | Stop containers. Keeps all data. |
-| `./local/snapshot.sh take` | no | Raft snapshot plus SHA-256 |
-| `./local/snapshot.sh restore <file> --yes` | yes | Replaces all Vault state |
+| `cd local && docker compose --profile credentials down` | no | Stop containers. Keeps all data. |
 | `./local/reset.sh --yes` | yes | Destroys volumes and unseal keys |
-| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenant-create <id>` | no | Onboard a tenant |
-| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenant-offboard <id> --yes` | yes (access) | Revoke access; secrets kept |
-| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenant-offboard <id> --yes --purge-secrets` | yes | Also destroy secret versions |
+| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants create <id>` | no | Onboard a tenant |
+| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants destroy <id> --yes` | yes (access) | Revoke access; secrets kept |
+| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants destroy <id> --yes --purge-secrets` | yes | Also destroy secret versions |
+| `docker compose run --rm bootstrap snapshot take` | no | Raft snapshot plus SHA-256 |
+| `docker compose run --rm bootstrap snapshot restore <file> --yes` | yes | Replaces all Vault state |
 | `go test -short ./...` | no | Unit tests (tenant ID, policy lint, render) |
 | `go test ./internal/vaultcluster` | no | Isolation and credentials (needs Docker) |
 | `./local/runtime-test.sh` | no | Persistence and one-shot unseal after restart |
@@ -175,7 +176,7 @@ Tenant IDs: `^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$` (3-32 characters). Rejected: `
 export VAULT_ADDR=http://127.0.0.1:8200
 export VAULT_TOKEN=$(cat local/.bootstrap/provisioning.token)
 cd local
-docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenant-create acme-corp
+docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenants create acme-corp
 ```
 
 `role_id` and `secret_id` print once and are not stored. Re-issue a secret_id if lost.
@@ -192,14 +193,14 @@ Offboard (revoke access, keep secrets):
 
 ```bash
 cd local
-docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenant-offboard acme-corp --yes
+docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenants destroy acme-corp --yes
 ```
 
 Offboard and destroy data (needs break-glass; provisioning cannot read or purge KV):
 
 ```bash
 cd local
-docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenant-offboard acme-corp --yes --purge-secrets
+docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenants destroy acme-corp --yes --purge-secrets
 ```
 
 Cross-tenant, wildcard, and traversal reads return HTTP 403. That is the isolation contract. A 200 on those paths is a breach.
@@ -244,20 +245,24 @@ A snapshot is the whole cluster (secrets, policies, tokens). Treat it like Vault
 
 Keep the matching `vault-init.json` with each snapshot. After restore, Vault unseals only with the shares that were current when the snapshot was taken.
 
+Snapshots are written to `local/.bootstrap/backups/` on the host, which the bootstrap container sees as `/bootstrap/backups/`.
+
 ### Backup
 
 ```bash
 cd local
-./snapshot.sh take
-./snapshot.sh list
-./snapshot.sh verify .bootstrap/backups/vault-<stamp>.snap
+docker compose --env-file .env run --rm bootstrap snapshot take
+docker compose --env-file .env run --rm bootstrap snapshot list
+docker compose --env-file .env run --rm bootstrap snapshot verify /bootstrap/backups/vault-<stamp>.snap
 ```
 
 ### Restore (destructive)
 
+Restore needs a token with `sys/storage/raft/snapshot-force`. The operator token cannot restore; generate a break-glass root first (see [Break-glass](#break-glass)).
+
 ```bash
 cd local
-./snapshot.sh restore .bootstrap/backups/vault-<stamp>.snap --yes
+docker compose --env-file .env run --rm -e VAULT_TOKEN=<break-glass-root> bootstrap snapshot restore /bootstrap/backups/vault-<stamp>.snap --yes
 ./setup.sh
 ```
 
@@ -268,17 +273,18 @@ cd local
 ./setup.sh
 export VAULT_ADDR=http://127.0.0.1:8200
 export VAULT_TOKEN=$(cat .bootstrap/provisioning.token)
-docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenant-create tenant-a
+docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenants create tenant-a
 
-./snapshot.sh take
+docker compose --env-file .env run --rm bootstrap snapshot take
 cp .bootstrap/vault-init.json /tmp/keys-at-snapshot.json
 
-docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenant-create tenant-drill
+docker compose --env-file .env run --rm -e VAULT_TOKEN bootstrap tenants create tenant-drill
 ./reset.sh --yes
 
 ./setup.sh
 cp /tmp/keys-at-snapshot.json .bootstrap/vault-init.json
-./snapshot.sh restore .bootstrap/backups/vault-<stamp>.snap --yes
+# generate a break-glass root (see Break-glass), then:
+docker compose --env-file .env run --rm -e VAULT_TOKEN=<break-glass-root> bootstrap snapshot restore /bootstrap/backups/vault-<stamp>.snap --yes
 ./setup.sh
 go test ./internal/vaultcluster -run TestIsolationMatrix
 ```

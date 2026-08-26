@@ -124,6 +124,11 @@ if [ ! -f "${OPERATOR_TOKEN_FILE}" ]; then
   no "bootstrap tokens are present" "run ./setup.sh"
 else
   export VAULT_TOKEN; VAULT_TOKEN="$(cat "${OPERATOR_TOKEN_FILE}")"
+  if compose run --rm --no-deps -e VAULT_TOKEN bootstrap tenants create tenant-a --no-credentials >/dev/null 2>&1; then
+    ok "tenant-a onboarded via vault-utils"
+  else
+    no "tenant-a onboarded via vault-utils" "tenants create failed"
+  fi
   WRITER_TOKEN="$(
     rid="$(curl -s --header "X-Vault-Token: ${VAULT_TOKEN}" \
       "${VAULT_ADDR}/v1/auth/approle/role/tenant-tenant-a-writer/role-id" | jq -r '.data.role_id')"

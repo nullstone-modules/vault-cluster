@@ -1,9 +1,9 @@
 # Dynamic DB creds for this tenant only. Additive; does not widen KV access.
-path "@@DATABASE_MOUNT@@/creds/tenant-@@TENANT_ID@@-*" {
+path "{{.DatabaseMount}}/creds/tenant-{{.TenantID}}-*" {
   capabilities = ["read"]
 }
 
-path "@@DATABASE_MOUNT@@/roles/tenant-@@TENANT_ID@@-*" {
+path "{{.DatabaseMount}}/roles/tenant-{{.TenantID}}-*" {
   capabilities = ["read"]
 }
 
@@ -15,22 +15,22 @@ path "sys/leases/revoke" {
   capabilities = ["update"]
 }
 
-path "@@DATABASE_MOUNT@@/creds/*" {
+path "{{.DatabaseMount}}/creds/*" {
   capabilities = ["deny"]
 }
 
-path "@@DATABASE_MOUNT@@/roles/*" {
+path "{{.DatabaseMount}}/roles/*" {
   capabilities = ["deny"]
 }
 
-path "@@DATABASE_MOUNT@@/config/*" {
+path "{{.DatabaseMount}}/config/*" {
   capabilities = ["deny"]
 }
 
-path "@@DATABASE_MOUNT@@/static-creds/*" {
+path "{{.DatabaseMount}}/static-creds/*" {
   capabilities = ["deny"]
 }
 
-path "@@DATABASE_MOUNT@@/rotate-root/*" {
+path "{{.DatabaseMount}}/rotate-root/*" {
   capabilities = ["deny"]
 }

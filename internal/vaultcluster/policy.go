@@ -3,6 +3,7 @@ package vaultcluster
 import (
 	"fmt"
 	"strings"
+	"text/template"
 
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster/policies"
 )
@@ -18,23 +19,20 @@ func RenderPolicy(templateName, tenantID string, cfg Config) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("no such template %q: %w", templateName, err)
 	}
-	out := string(raw)
-	repl := map[string]string{
-		"@@TENANT_ID@@":      tenantID,
-		"@@KV_MOUNT@@":       cfg.KVMount,
-		"@@TENANT_PREFIX@@":  cfg.TenantPrefix,
-		"@@DATABASE_MOUNT@@": cfg.DatabaseMount,
-		"@@AUTH_MOUNT@@":     cfg.AuthMount,
+	tpl, err := template.New(name).Option("missingkey=error").Parse(string(raw))
+	if err != nil {
+		return "", fmt.Errorf("parse template %q: %w", templateName, err)
 	}
-	for k, v := range repl {
-		out = strings.ReplaceAll(out, k, v)
+	data := struct {
+		TenantID      string
+		KVMount       string
+		TenantPrefix  string
+		DatabaseMount string
+		AuthMount     string
+	}{tenantID, cfg.KVMount, cfg.TenantPrefix, cfg.DatabaseMount, cfg.AuthMount}
+	var b strings.Builder
+	if err := tpl.Execute(&b, data); err != nil {
+		return "", fmt.Errorf("render template %q: %w", templateName, err)
 	}
-	if i := strings.Index(out, "@@"); i >= 0 {
-		end := strings.Index(out[i+2:], "@@")
-		if end >= 0 {
-			return "", fmt.Errorf("unsubstituted placeholder %s", out[i:i+4+end])
-		}
-		return "", fmt.Errorf("unsubstituted placeholder remaining")
-	}
-	return out, nil
+	return b.String(), nil
 }

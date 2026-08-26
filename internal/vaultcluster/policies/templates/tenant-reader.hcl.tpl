@@ -1,29 +1,29 @@
 # Read-only on one tenant. KV v2 needs data/ and metadata/; kv/{prefix}/{id} matches nothing.
-path "@@KV_MOUNT@@/data/@@TENANT_PREFIX@@/@@TENANT_ID@@/*" {
+path "{{.KVMount}}/data/{{.TenantPrefix}}/{{.TenantID}}/*" {
   capabilities = ["read"]
 }
 
-path "@@KV_MOUNT@@/metadata/@@TENANT_PREFIX@@/@@TENANT_ID@@/*" {
+path "{{.KVMount}}/metadata/{{.TenantPrefix}}/{{.TenantID}}/*" {
   capabilities = ["read", "list"]
 }
 
-path "@@KV_MOUNT@@/data/@@TENANT_PREFIX@@/*" {
+path "{{.KVMount}}/data/{{.TenantPrefix}}/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/metadata/@@TENANT_PREFIX@@/*" {
+path "{{.KVMount}}/metadata/{{.TenantPrefix}}/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/delete/@@TENANT_PREFIX@@/*" {
+path "{{.KVMount}}/delete/{{.TenantPrefix}}/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/undelete/@@TENANT_PREFIX@@/*" {
+path "{{.KVMount}}/undelete/{{.TenantPrefix}}/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/destroy/@@TENANT_PREFIX@@/*" {
+path "{{.KVMount}}/destroy/{{.TenantPrefix}}/*" {
   capabilities = ["deny"]
 }
 
@@ -43,7 +43,7 @@ path "auth/token/create*" {
   capabilities = ["deny"]
 }
 
-path "auth/@@AUTH_MOUNT@@/role/*" {
+path "auth/{{.AuthMount}}/role/*" {
   capabilities = ["deny"]
 }
 
@@ -51,6 +51,6 @@ path "identity/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/config" {
+path "{{.KVMount}}/config" {
   capabilities = ["deny"]
 }

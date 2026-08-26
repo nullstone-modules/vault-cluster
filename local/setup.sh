@@ -46,7 +46,7 @@ wait_for_unsealed 60 || die "Vault is still sealed after bootstrap"
 cat >&2 <<EOF
 
 --------------------------------------------------------------------
-Local Vault is ready.
+Local Vault is ready. No tenants exist yet.
 
   VAULT_ADDR   ${VAULT_ADDR}
   identities   ${BOOTSTRAP_DIR}/provisioning.token
@@ -55,5 +55,8 @@ Local Vault is ready.
 
   export VAULT_ADDR=${VAULT_ADDR}
   export VAULT_TOKEN=\$(cat ${BOOTSTRAP_DIR}/provisioning.token)
+
+  create a tenant:
+    docker compose run --rm -e VAULT_TOKEN bootstrap tenants create <id>
 --------------------------------------------------------------------
 EOF

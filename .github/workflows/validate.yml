@@ -126,7 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           fail=0
-          if grep -nE '^[A-Z_]*IMAGE=' local/.env.example | grep -v '@sha256:'; then
+          if grep -nE '^\s*image:' local/compose.yml | grep -v '@sha256:'; then
             echo "FAIL: an image is not digest-pinned"; fail=1
           fi
           if grep -rn ':latest' local/ --include='*.yml' --include='.env.example'; then
@@ -170,8 +170,8 @@ jobs:
             exit 1
           fi
 
-          grep -A20 '^  postgres:' docker-compose.yml | grep -q 'credentials' \
-            || { echo "FAIL: postgres is not declared behind the credentials profile in docker-compose.yml"; exit 1; }
+          grep -A20 '^  postgres:' compose.yml | grep -q 'credentials' \
+            || { echo "FAIL: postgres is not declared behind the credentials profile in compose.yml"; exit 1; }
 
   docs:
     name: documentation

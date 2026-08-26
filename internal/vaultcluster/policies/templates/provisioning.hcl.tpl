@@ -7,15 +7,15 @@ path "sys/policies/acl" {
   capabilities = ["list"]
 }
 
-path "auth/@@AUTH_MOUNT@@/role/tenant-*" {
+path "auth/{{.AuthMount}}/role/tenant-*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
-path "auth/@@AUTH_MOUNT@@/role" {
+path "auth/{{.AuthMount}}/role" {
   capabilities = ["list"]
 }
 
-path "@@DATABASE_MOUNT@@/roles/tenant-*" {
+path "{{.DatabaseMount}}/roles/tenant-*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
@@ -35,7 +35,7 @@ path "auth/token/renew-self" {
   capabilities = ["update"]
 }
 
-path "@@KV_MOUNT@@/*" {
+path "{{.KVMount}}/*" {
   capabilities = ["deny"]
 }
 
@@ -51,7 +51,7 @@ path "sys/audit-hash/*" {
   capabilities = ["deny"]
 }
 
-path "@@DATABASE_MOUNT@@/creds/*" {
+path "{{.DatabaseMount}}/creds/*" {
   capabilities = ["deny"]
 }
 

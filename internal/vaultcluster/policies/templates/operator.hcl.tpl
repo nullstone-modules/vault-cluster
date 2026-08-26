@@ -15,7 +15,7 @@ path "sys/mounts" {
   capabilities = ["read", "sudo"]
 }
 
-path "sys/mounts/@@DATABASE_MOUNT@@" {
+path "sys/mounts/{{.DatabaseMount}}" {
   capabilities = ["create", "update", "sudo"]
 }
 
@@ -39,23 +39,23 @@ path "sys/audit" {
   capabilities = ["read", "sudo"]
 }
 
-path "auth/@@AUTH_MOUNT@@/role" {
+path "auth/{{.AuthMount}}/role" {
   capabilities = ["list"]
 }
 
-path "auth/@@AUTH_MOUNT@@/role/*" {
+path "auth/{{.AuthMount}}/role/*" {
   capabilities = ["read"]
 }
 
-path "@@DATABASE_MOUNT@@/roles" {
+path "{{.DatabaseMount}}/roles" {
   capabilities = ["list"]
 }
 
-path "@@DATABASE_MOUNT@@/roles/*" {
+path "{{.DatabaseMount}}/roles/*" {
   capabilities = ["read"]
 }
 
-path "@@DATABASE_MOUNT@@/config/*" {
+path "{{.DatabaseMount}}/config/*" {
   capabilities = ["create", "update", "read"]
 }
 
@@ -95,15 +95,15 @@ path "auth/token/revoke-self" {
   capabilities = ["update"]
 }
 
-path "@@KV_MOUNT@@/data/*" {
+path "{{.KVMount}}/data/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/metadata/*" {
+path "{{.KVMount}}/metadata/*" {
   capabilities = ["deny"]
 }
 
-path "@@DATABASE_MOUNT@@/creds/*" {
+path "{{.DatabaseMount}}/creds/*" {
   capabilities = ["deny"]
 }
 

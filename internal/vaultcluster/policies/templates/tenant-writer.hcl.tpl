@@ -1,41 +1,41 @@
 # Full KV lifecycle on one tenant. Name all five KV v2 path families.
-path "@@KV_MOUNT@@/data/@@TENANT_PREFIX@@/@@TENANT_ID@@/*" {
+path "{{.KVMount}}/data/{{.TenantPrefix}}/{{.TenantID}}/*" {
   capabilities = ["create", "read", "update", "patch", "delete", "list"]
 }
 
-path "@@KV_MOUNT@@/metadata/@@TENANT_PREFIX@@/@@TENANT_ID@@/*" {
+path "{{.KVMount}}/metadata/{{.TenantPrefix}}/{{.TenantID}}/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
-path "@@KV_MOUNT@@/delete/@@TENANT_PREFIX@@/@@TENANT_ID@@/*" {
+path "{{.KVMount}}/delete/{{.TenantPrefix}}/{{.TenantID}}/*" {
   capabilities = ["update"]
 }
 
-path "@@KV_MOUNT@@/undelete/@@TENANT_PREFIX@@/@@TENANT_ID@@/*" {
+path "{{.KVMount}}/undelete/{{.TenantPrefix}}/{{.TenantID}}/*" {
   capabilities = ["update"]
 }
 
-path "@@KV_MOUNT@@/destroy/@@TENANT_PREFIX@@/@@TENANT_ID@@/*" {
+path "{{.KVMount}}/destroy/{{.TenantPrefix}}/{{.TenantID}}/*" {
   capabilities = ["update"]
 }
 
-path "@@KV_MOUNT@@/data/@@TENANT_PREFIX@@/*" {
+path "{{.KVMount}}/data/{{.TenantPrefix}}/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/metadata/@@TENANT_PREFIX@@/*" {
+path "{{.KVMount}}/metadata/{{.TenantPrefix}}/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/delete/@@TENANT_PREFIX@@/*" {
+path "{{.KVMount}}/delete/{{.TenantPrefix}}/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/undelete/@@TENANT_PREFIX@@/*" {
+path "{{.KVMount}}/undelete/{{.TenantPrefix}}/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/destroy/@@TENANT_PREFIX@@/*" {
+path "{{.KVMount}}/destroy/{{.TenantPrefix}}/*" {
   capabilities = ["deny"]
 }
 
@@ -55,7 +55,7 @@ path "auth/token/create*" {
   capabilities = ["deny"]
 }
 
-path "auth/@@AUTH_MOUNT@@/role/*" {
+path "auth/{{.AuthMount}}/role/*" {
   capabilities = ["deny"]
 }
 
@@ -63,6 +63,6 @@ path "identity/*" {
   capabilities = ["deny"]
 }
 
-path "@@KV_MOUNT@@/config" {
+path "{{.KVMount}}/config" {
   capabilities = ["deny"]
 }

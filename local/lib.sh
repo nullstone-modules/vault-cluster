@@ -3,7 +3,7 @@
 
 ADAPTER_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${ADAPTER_DIR}/.." && pwd)"
-COMPOSE_FILE="${ADAPTER_DIR}/docker-compose.yml"
+COMPOSE_FILE="${ADAPTER_DIR}/compose.yml"
 ENV_FILE="${ADAPTER_DIR}/.env"
 ENV_EXAMPLE="${ADAPTER_DIR}/.env.example"
 BOOTSTRAP_DIR="${ADAPTER_DIR}/.bootstrap"
@@ -112,10 +112,4 @@ vault_is_sealed() {
 ensure_bootstrap_dir() {
   mkdir -p "${BOOTSTRAP_DIR}"
   chmod 700 "${BOOTSTRAP_DIR}"
-}
-
-read_bootstrap_token() {
-  local file="${BOOTSTRAP_DIR}/$1"
-  [ -f "${file}" ] || die "missing ${file} - run ./setup.sh first"
-  cat "${file}"
 }
