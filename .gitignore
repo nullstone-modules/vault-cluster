@@ -13,7 +13,7 @@ examples/
 adrs/
 adapters/
 
-# Unseal keys, tokens, snapshots — never commit.
+# Unseal keys, tokens, snapshots. Never commit.
 .bootstrap/
 **/.bootstrap/
 *.unseal
@@ -31,7 +31,7 @@ local/audit/
 local/backups/
 
 # Generated policies.
-config/policies/rendered/
+local/.rendered-policies/
 *.rendered.hcl
 
 # Secrets and local env.
@@ -58,6 +58,10 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+
+# Go build artifacts.
+/vault-utils
+coverage.out
 
 # Test/editor noise.
 test-results/

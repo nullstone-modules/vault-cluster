@@ -1,5 +1,3 @@
-# Local Vault CE. Raft on /vault/file. No dev mode. TLS off; Compose binds 127.0.0.1.
-
 cluster_name = "vault-local"
 ui = true
 

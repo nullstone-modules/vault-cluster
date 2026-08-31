@@ -1,8 +1,4 @@
-# Static validation. Runs on every push and pull request.
-#
-# Needs no Vault, no Docker, and no secrets, so it is fast and cannot be flaky.
-# Everything here catches a defect class that is otherwise invisible until
-# something is deployed.
+# Static validation.
 name: validate
 
 on:
@@ -14,72 +10,18 @@ permissions:
   contents: read
 
 jobs:
-  shellcheck:
-    name: shellcheck
+  go:
+    name: go unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
 
-      - name: Lint all shell scripts
-        run: |
-          set -euo pipefail
-          mapfile -t files < <(find config scripts tests local -name '*.sh' | sort)
-          printf 'checking %d scripts\n' "${#files[@]}"
-          # -x follows sourced files, so cross-file problems are caught too.
-          shellcheck -x --severity=warning --shell=bash "${files[@]}"
-
-      - name: Every script must be executable
-        run: |
-          set -euo pipefail
-          # A non-executable script fails at the least convenient moment, in
-          # someone else's environment, with a confusing error.
-          fail=0
-          while IFS= read -r f; do
-            case "$f" in */lib/*|*/lib.sh|*/common/*) continue ;; esac
-            [ -x "$f" ] || { echo "not executable: $f"; fail=1; }
-          done < <(find config scripts tests local -name '*.sh' | sort)
-          exit "$fail"
-
-  policy-lint:
-    name: policy linter self-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Linter must reject every BAD fixture and accept GOOD ones
-        # The detector self-test. A linter that has never rejected anything is
-        # indistinguishable from one with a broken pattern - both report
-        # success on every run.
-        run: tests/lint/lint-self-test.sh
-
-      - name: Real templates must render and pass lint
-        run: |
-          set -euo pipefail
-          scripts/tenants/render-policy.sh provisioning >/dev/null
-          scripts/tenants/render-policy.sh operator >/dev/null
-          for t in reader writer database; do
-            scripts/tenants/render-policy.sh "tenant-$t" tenant-a "tenant-tenant-a-$t" >/dev/null
-          done
-          tests/lint/policy-lint.sh config/policies/rendered/*.hcl
-
-      - name: Tenant ID validation accepts and rejects correctly
-        run: |
-          set -euo pipefail
-          fail=0
-          for id in tenant-a tenant-b acme-corp; do
-            scripts/validation/validate-tenant-id.sh "$id" >/dev/null \
-              || { echo "should have been ACCEPTED: $id"; fail=1; }
-          done
-          # Each of these would become an ACL path if accepted.
-          for id in 'a/b' '../etc' 'tenant-*' 'TENANT' 'ab' 'sys' 'data' 'a b' 'a_b' '-x' 'x-'; do
-            if scripts/validation/validate-tenant-id.sh "$id" >/dev/null 2>&1; then
-              echo "should have been REJECTED: $id"; fail=1
-            fi
-          done
-          exit "$fail"
+      - name: Unit tests (no Docker)
+        run: go test -short ./...
 
   architecture:
     name: runtime separation
@@ -87,36 +29,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: shared config/scripts/tests must not reference any runtime
-        # Shared config must not depend on a runtime. Enforced mechanically.
-        # A rule checked only at review time erodes; this fails the build.
+      - name: HTTP-only trees must not reference any runtime
         run: |
           set -euo pipefail
           fail=0
           check() {
             local pattern="$1" label="$2"
-            if grep -rInE "$pattern" config/ scripts/ tests/ --include='*.sh' --include='*.tpl' --include='*.hcl' \
+            if grep -rInE "$pattern" \
+                 internal/vaultcluster/policies \
+                 --include='*.sh' --include='*.tpl' --include='*.hcl' \
                  | grep -vE '^\s*[^:]+:[0-9]+:\s*#' ; then
-              echo "FAIL: shared tree references $label"
+              echo "FAIL: HTTP-only tree references $label"
               fail=1
             fi
           }
-          # Comment lines are excluded above: the prohibition is on depending
-          # on a runtime, not on explaining why the rule exists.
           check '\bdocker\b'              'docker'
           check '\bdocker[- ]compose\b'   'docker compose'
           check 'vault-cluster-(vault|postgres)'  'container names'
           check '/vault/(file|logs|config)' 'container filesystem paths'
           exit "$fail"
-
-      - name: Conformance tests must be driven only by VAULT_ADDR
-        run: |
-          set -euo pipefail
-          if grep -rIn 'docker' tests/conformance/ | grep -vE ':\s*#'; then
-            echo "FAIL: conformance tests reference docker."
-            echo "Runtime-specific assertions belong in local/tests/."
-            exit 1
-          fi
 
   security:
     name: secret scan and CE guard
@@ -128,14 +59,12 @@ jobs:
         run: |
           set -euo pipefail
           fail=0
-          # Names first: these files must never exist in the tree at all.
           while IFS= read -r f; do
             echo "FAIL: bootstrap material committed: $f"; fail=1
           done < <(find . -path ./.git -prune -o \
                      \( -name 'vault-init.json' -o -name '*.snap' \
                         -o -name '*.token' -o -name 'unseal*' \) -print)
 
-          # Then content: an unseal key or root token pasted into a doc.
           if grep -rInE 'hvs\.[A-Za-z0-9_-]{20,}|"root_token"\s*:\s*"hvs' . \
                --exclude-dir=.git --exclude=CHANGELOG.md; then
             echo "FAIL: what looks like a real Vault token is committed"; fail=1
@@ -143,32 +72,26 @@ jobs:
           exit "$fail"
 
       - name: Fake credentials are labelled as fake
-        # Fixture values that look plausible eventually get copied somewhere
-        # real. Everything in this repo is prefixed FAKE- or local-dev-.
         run: |
           set -euo pipefail
           if grep -rInE '(password|secret|api_key)\s*[:=]\s*"[A-Za-z0-9]{16,}"' \
-               config/ scripts/ tests/ 2>/dev/null \
+               local internal 2>/dev/null \
                | grep -viE 'FAKE-|local-dev-|\{\{|\$\{|not-a-real'; then
             echo "FAIL: an unlabelled credential-shaped literal was found"
             exit 1
           fi
 
       - name: No Vault Enterprise features are used
-        # Community Edition only. An Enterprise-only endpoint
-        # works against a trial binary and fails on the licensed-out one, which
-        # is the worst possible time to find out.
         run: |
           set -euo pipefail
           fail=0
-          # sys/namespaces, control groups, performance replication, Sentinel.
           if grep -rInE 'sys/namespaces|X-Vault-Namespace|sys/replication|sys/control-group|sentinel' \
-               config/ scripts/ tests/ local/ --include='*.sh' --include='*.hcl' --include='*.tpl' \
+               local/ cmd/ internal/ --include='*.sh' --include='*.hcl' --include='*.tpl' --include='*.go' \
                | grep -vE ':\s*#' | grep -v 'VAULT_NAMESPACE'; then
             echo "FAIL: Vault Enterprise-only feature referenced (Community Edition only)"
             fail=1
           fi
-          if grep -rIn 'hashicorp/vault-enterprise' config scripts tests local --exclude-dir=.git; then
+          if grep -rIn 'hashicorp/vault-enterprise' local cmd internal --exclude-dir=.git; then
             echo "FAIL: Enterprise image referenced"; fail=1
           fi
           exit "$fail"
@@ -177,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           fail=0
-          if grep -nE '^[A-Z_]*IMAGE=' local/.env.example | grep -v '@sha256:'; then
+          if grep -nE '^\s*image:' local/compose.yml | grep -v '@sha256:'; then
             echo "FAIL: an image is not digest-pinned"; fail=1
           fi
           if grep -rn ':latest' local/ --include='*.yml' --include='.env.example'; then
@@ -191,7 +114,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compose file is valid and PostgreSQL is profile-gated
+      - name: Compose file is valid with a one-shot bootstrap
         run: |
           set -euo pipefail
           cd local
@@ -201,25 +124,18 @@ jobs:
 
           default_svcs="$(docker compose --env-file .env config --services)"
           printf 'default services:\n%s\n' "${default_svcs}"
+          if printf '%s\n' "${default_svcs}" | grep -qx 'unseal'; then
+            echo "FAIL: long-running unseal sidecar should not be a default service"
+            exit 1
+          fi
+          if ! printf '%s\n' "${default_svcs}" | grep -qx 'bootstrap'; then
+            echo "FAIL: bootstrap one-shot missing from default compose services"
+            exit 1
+          fi
           if printf '%s\n' "${default_svcs}" | grep -qx 'postgres'; then
-            echo "FAIL: postgres appears without the credentials profile"
+            echo "FAIL: the local stack must not run PostgreSQL"
             exit 1
           fi
-
-          cred_svcs="$(COMPOSE_PROFILES=credentials docker compose --env-file .env --profile credentials config --services)"
-          printf 'credentials services:\n%s\n' "${cred_svcs}"
-          if ! printf '%s\n' "${cred_svcs}" | grep -qx 'postgres'; then
-            echo "FAIL: postgres missing from the credentials profile"
-            exit 1
-          fi
-
-          if ! printf '%s\n' "${default_svcs}" | grep -qx 'unseal'; then
-            echo "FAIL: unseal sidecar missing from the default compose services"
-            exit 1
-          fi
-
-          grep -A20 '^  postgres:' docker-compose.yml | grep -q 'credentials' \
-            || { echo "FAIL: postgres is not declared behind the credentials profile in docker-compose.yml"; exit 1; }
 
   docs:
     name: documentation

@@ -1,4 +1,3 @@
-# Isolation without a database, then credentials as a second job.
 name: test-local
 
 on:
@@ -9,174 +8,31 @@ on:
 permissions:
   contents: read
 
-env:
-  VAULT_ADDR: http://127.0.0.1:8200
-
 jobs:
-  # Isolation, with no database anywhere.
-  isolation:
-    name: isolation (no database)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Prepare environment
-        working-directory: local
-        run: cp .env.example .env
-
-      - name: Setup (auto-init + unseal, no database)
-        working-directory: local
-        run: ./setup.sh
-
-      - name: Confirm no database container is running
-        working-directory: local
-        # The assertion this whole job exists for. If a database is running,
-        # every isolation result below is contaminated by a dependency that
-        # the isolation capability is supposed not to have.
-        run: |
-          set -euo pipefail
-          running="$(docker compose ps --format '{{.Service}}')"
-          echo "running: ${running}"
-          if echo "${running}" | grep -q postgres; then
-            echo "FAIL: PostgreSQL is running during the isolation-only job"
-            exit 1
-          fi
-
-      - name: Isolation conformance
-        working-directory: local
-        env:
-          # Supplied by the local target. The tests contain no Docker; they
-          # invoke whatever command the environment provides.
-          AUDIT_READ_CMD: docker compose exec -T vault cat /vault/logs/audit.log
-        run: |
-          set -euo pipefail
-          export VAULT_TOKEN="$(cat .bootstrap/provisioning.token)"
-          ../tests/run-conformance.sh --layer isolation
-
-      - name: Requesting a disabled capability must fail, not skip
-        working-directory: local
-        # A skipped suite that exits 0 is indistinguishable from a passing one,
-        # and nobody reads the output of a green CI run.
-        run: |
-          set -euo pipefail
-          export VAULT_TOKEN="$(cat .bootstrap/provisioning.token)"
-          if ../tests/run-conformance.sh --layer credentials; then
-            echo "FAIL: the credentials suite reported success while disabled"
-            exit 1
-          fi
-          echo "correctly refused to run a disabled capability"
-
-      - name: Local runtime tests
-        working-directory: local
-        run: ./tests/runtime-test.sh
-
-      - name: Capture audit log on failure
-        if: failure()
-        working-directory: local
-        run: |
-          docker compose exec -T vault cat /vault/logs/audit.log > /tmp/audit.json || true
-          docker compose logs vault > /tmp/vault.log 2>&1 || true
-
-      - name: Upload diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: isolation-diagnostics
-          # HMAC-ed, so no plaintext secrets - but it does reveal paths,
-          # identities, and timing, so retention is short.
-          path: |
-            /tmp/audit.json
-            /tmp/vault.log
-          retention-days: 3
-
-      - name: Tear down
-        if: always()
-        working-directory: local
-        run: ./reset.sh --yes || true
-
-  # Dynamic credentials, plus the isolation matrix re-run.
-  credentials:
-    name: dynamic credentials
+  go:
+    name: go tests (docker)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Sequential on purpose. If isolation is red, credential results are noise:
-    # they would be measured against an unproven isolation model, which is the
-    # same reasoning as the checkpoint in the implementation plan.
-    needs: isolation
-
-    env:
-      ENABLE_DYNAMIC_CREDENTIALS: "true"
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare environment
-        working-directory: local
-        run: cp .env.example .env
-
-      - name: Setup (auto-init + unseal, with PostgreSQL)
-        working-directory: local
-        run: ./setup.sh --with-credentials
-
-      - name: Full conformance
-        working-directory: local
-        env:
-          PSQL_CMD: docker compose exec -T postgres psql
-          DB_TEST_HOST: localhost
-          DB_TEST_NAME: appdb
-          DB_ADMIN_USER: postgres
-          DB_ADMIN_PASSWORD: local-dev-only-not-a-real-secret
-          AUDIT_READ_CMD: docker compose exec -T vault cat /vault/logs/audit.log
-        # --layer all re-runs the isolation matrix with credentials enabled.
-        # Additive changes are where a widened boundary goes unnoticed, since
-        # the isolation job never sees dynamic credentials at all.
-        run: |
-          set -euo pipefail
-          export VAULT_TOKEN="$(cat .bootstrap/provisioning.token)"
-          ../tests/run-conformance.sh --layer all
-
-      - name: Final residue check
-        working-directory: local
-        # Independent of the suite's own scan. If the tests themselves leaked a
-        # role, the suite that leaked it is not the right thing to ask.
-        run: |
-          set -euo pipefail
-          leftover="$(docker compose exec -T postgres psql \
-            "postgresql://postgres:local-dev-only-not-a-real-secret@localhost:5432/appdb" \
-            -tAc "SELECT count(*) FROM pg_roles WHERE rolname LIKE 'v-%';" | tr -d '[:space:]')"
-          echo "vault-created roles remaining: ${leftover}"
-          if [ "${leftover}" != "0" ]; then
-            docker compose exec -T postgres psql \
-              "postgresql://postgres:local-dev-only-not-a-real-secret@localhost:5432/appdb" \
-              -c "SELECT rolname, rolvaliduntil FROM pg_roles WHERE rolname LIKE 'v-%';"
-            echo "NOTE: roles remain. Acceptable only if backed by live leases."
-          fi
-
-      - name: Capture diagnostics on failure
-        if: failure()
-        working-directory: local
-        run: |
-          docker compose exec -T vault cat /vault/logs/audit.log > /tmp/audit.json || true
-          docker compose logs > /tmp/services.log 2>&1 || true
-          docker compose exec -T postgres psql \
-            "postgresql://postgres:local-dev-only-not-a-real-secret@localhost:5432/appdb" \
-            -c "SELECT rolname, rolvaliduntil FROM pg_roles WHERE rolname LIKE 'v-%';" \
-            > /tmp/pg_roles.txt 2>&1 || true
-
-      - name: Upload diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - uses: actions/setup-go@v5
         with:
-          name: credentials-diagnostics
-          path: |
-            /tmp/audit.json
-            /tmp/services.log
-            /tmp/pg_roles.txt
-          retention-days: 3
+          go-version: "1.23.x"
 
-      - name: Tear down
-        if: always()
-        working-directory: local
-        run: ./reset.sh --yes || true
+      - name: Isolation and credentials
+        run: go test ./internal/vaultcluster -count=1 -timeout 15m
+
+  stack:
+    name: compose runtime conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      - name: Local compose runtime test
+        run: go test ./local -count=1 -timeout 15m -v

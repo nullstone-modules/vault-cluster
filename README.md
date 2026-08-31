@@ -4,7 +4,7 @@ Multi-platform modules to configure a self-hosted Vault cluster on local, AWS, G
 
 Applications share one Vault. They do not see each other's secrets. Isolation is a path prefix plus ACL policy plus AppRole. Vault CE has no namespaces. This is not Enterprise.
 
-**Dev machine:** `./setup.sh`. You do not init or unseal by hand.
+**Dev machine:** `cd local && docker compose up -d --build`. You do not init or unseal by hand.
 
 | Target | Role | Status |
 |---|---|---|
@@ -36,13 +36,13 @@ There is no `module "vault_cluster" { source = "./${var.cloud}" }` switch. Share
 
 Implemented:
 
-- Vault CE 1.21.4 (never `-dev`, never Enterprise)
+- Vault CE 2.0 (never `-dev`, never Enterprise)
 - Docker Compose, Raft on a named volume
 - KV v2 at `kv/customers/{tenant}/*`
-- Optional PostgreSQL dynamic credentials
+- Dynamic PostgreSQL credentials in the Go library only (`TestCredentialsMatrix`); the local stack runs no PostgreSQL and never mounts `database/`
 - File audit on a volume separate from Raft
-- Auto-init (first start) and auto-unseal (Compose sidecar on every reseal)
-- Isolation and credentials conformance tests
+- Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
+- Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
 
 Not implemented:
 
@@ -65,16 +65,12 @@ Docker Compose
   |     KV v2
   |     ACL policies
   |     AppRole
-  |     Database engine (optional)
   |     Audit
-  |     unseal sidecar (local Shamir only)
   |
-  +-- PostgreSQL    (Compose profile `credentials` only)
+  +-- vault-utils bootstrap   (one-shot: init, unseal, configure)
 ```
 
-`config/`, `scripts/`, and `tests/` use HTTP to Vault. They must not name Docker, clouds, or host paths. `local/` owns Compose, volumes, and where unseal keys live.
-
-Isolation runs Vault alone. PostgreSQL starts only with `--with-credentials`.
+Isolation and credentials tests are Go (`go test ./internal/vaultcluster`). Both run throwaway containers; the credentials suite brings its own PostgreSQL, so the local stack never runs one.
 
 ## Repository layout
 
@@ -82,33 +78,31 @@ Isolation runs Vault alone. PostgreSQL starts only with `--with-credentials`.
 vault-cluster/
 ├── README.md
 ├── CHANGELOG.md
-├── setup.sh
-├── config/          policies, AppRole, KV, database engine, audit
-├── scripts/         tenant onboard/offboard, tenant-id validation
-├── tests/           isolation and credentials conformance, policy linter
-├── local/           Compose, unseal sidecar, snapshots, runtime tests
-├── aws/
-├── gcp/
-└── azure/
+├── Dockerfile            vault-utils image
+├── cmd/                  Go app entrypoints (vault-utils CLI)
+├── internal/             Go libraries, policy templates, lint fixtures
+├── local/                Compose target, snapshots
+├── aws/                  Nullstone Terraform module (not yet implemented)
+├── gcp/                  Nullstone Terraform module (not yet implemented)
+└── azure/                Nullstone Terraform module (not yet implemented)
 ```
 
 ## Prerequisites
 
-Docker Desktop (Compose v2), `curl`, and `jq`. Vault CLI is optional except break-glass decode.
+Docker Desktop (Compose v2). Go 1.23 for `go test`. `curl` and `jq` for the manual examples below; Vault CLI is optional except break-glass decode.
 
-Images are pinned by tag and digest in `local/.env.example` (Vault 1.21.4, PostgreSQL 16.15-alpine). Never `latest`.
+Images are pinned by tag and digest in `local/compose.yml` (Vault 2.0, PostgreSQL 18-alpine). Never `latest`.
 
 ```bash
 docker --version
 docker compose version
-jq --version
-curl --version
 ```
 
 ## Quick start
 
 ```bash
-./setup.sh
+cd local
+docker compose up -d
 ```
 
 First run:
@@ -119,15 +113,10 @@ First run:
 4. Unseals
 5. Enables audit, KV v2, AppRole, policies
 6. Revokes the root token
-7. Onboards synthetic `tenant-a` and `tenant-b`
 
-Later runs skip init. The Compose sidecar unseals if Vault resealed.
+Bootstrap only initializes the cluster. Tenants are created explicitly with `tenants create`.
 
-Dynamic credentials (starts PostgreSQL):
-
-```bash
-./setup.sh --with-credentials
-```
+Later runs skip init if the provisioning token still works. A Vault process restart reseals. Unseal is a one-shot (`docker compose run --rm bootstrap`), not a long-running sidecar. `docker compose up -d` starts Vault and runs bootstrap once, then bootstrap exits.
 
 Then:
 
@@ -142,24 +131,21 @@ Do not commit `.bootstrap/` or `.env`. Do not run `vault operator unseal`.
 
 ## Commands
 
-Run from the repository root unless noted. Destructive commands require `--yes`.
+Run from `local/` unless noted. Destructive commands require `--yes`.
 
 | Command | Destructive | Purpose |
 |---|---|---|
-| `./setup.sh` | no | Start, init (first time), unseal, configure, synthetic tenants |
-| `./setup.sh --with-credentials` | no | Same, plus PostgreSQL and the database engine |
-| `./local/stop.sh` | no | Stop containers. Keeps all data. |
-| `./local/bootstrap/up.sh` | no | Start Compose only (Vault + unseal sidecar) |
-| `./local/bootstrap/health.sh` | no | Health with a reason for each failure |
-| `./local/bootstrap/snapshot.sh take` | no | Raft snapshot plus SHA-256 |
-| `./local/bootstrap/snapshot.sh restore <file> --yes` | yes | Replaces all Vault state |
-| `./local/reset.sh --yes` | yes | Destroys volumes and unseal keys |
-| `./scripts/tenants/create-tenant.sh <id>` | no | Onboard a tenant |
-| `./scripts/tenants/offboard-tenant.sh <id> --yes` | yes (access) | Revoke access; secrets kept |
-| `./scripts/tenants/offboard-tenant.sh <id> --yes --purge-secrets` | yes | Also destroy secret versions |
-| `./tests/run-conformance.sh --layer isolation` | no | Isolation tests |
-| `./tests/run-conformance.sh --layer all` | no | Isolation plus credentials |
-| `./local/tests/runtime-test.sh` | no | Persistence and unseal sidecar tests |
+| `docker compose up -d --build` | no | Start, init (first time), unseal, configure |
+| `docker compose down` | no | Stop containers. Keeps all data. |
+| `docker compose down --volumes --remove-orphans && rm -rf .bootstrap` | yes | Destroys volumes and unseal keys |
+| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants create <id>` | no | Onboard a tenant |
+| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants destroy <id> --yes` | yes (access) | Revoke access; secrets kept |
+| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants destroy <id> --yes --purge-secrets` | yes | Also destroy secret versions |
+| `docker compose run --rm bootstrap snapshot take` | no | Raft snapshot plus SHA-256 |
+| `docker compose run --rm bootstrap snapshot restore <file> --yes` | yes | Replaces all Vault state |
+| `go test -short ./...` | no | Unit tests (tenant ID, policy lint, render, compose lint) — repo root |
+| `go test ./internal/vaultcluster` | no | Isolation and credentials (needs Docker) — repo root |
+| `go test ./local` | no | Compose runtime conformance (needs Docker) — repo root |
 
 ## Tenant isolation
 
@@ -175,11 +161,10 @@ kv/metadata/customers/{tenant_id}/*
 Tenant IDs: `^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$` (3-32 characters). Rejected: `/`, `..`, `*`, `sys`, `data`, `root`, and similar reserved names.
 
 ```bash
-./scripts/validation/validate-tenant-id.sh acme-corp
-
 export VAULT_ADDR=http://127.0.0.1:8200
 export VAULT_TOKEN=$(cat local/.bootstrap/provisioning.token)
-./scripts/tenants/create-tenant.sh acme-corp
+cd local
+docker compose run --rm -e VAULT_TOKEN bootstrap tenants create acme-corp
 ```
 
 `role_id` and `secret_id` print once and are not stored. Re-issue a secret_id if lost.
@@ -195,13 +180,15 @@ curl -s -H "X-Vault-Token: ${TENANT_TOKEN}" \
 Offboard (revoke access, keep secrets):
 
 ```bash
-./scripts/tenants/offboard-tenant.sh acme-corp --yes
+cd local
+docker compose run --rm -e VAULT_TOKEN bootstrap tenants destroy acme-corp --yes
 ```
 
 Offboard and destroy data (needs break-glass; provisioning cannot read or purge KV):
 
 ```bash
-./scripts/tenants/offboard-tenant.sh acme-corp --yes --purge-secrets
+cd local
+docker compose run --rm -e VAULT_TOKEN bootstrap tenants destroy acme-corp --yes --purge-secrets
 ```
 
 Cross-tenant, wildcard, and traversal reads return HTTP 403. That is the isolation contract. A 200 on those paths is a breach.
@@ -218,8 +205,6 @@ Cross-tenant, wildcard, and traversal reads return HTTP 403. That is the isolati
 ## Health
 
 ```bash
-./local/bootstrap/health.sh
-
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8200/v1/sys/health
 ```
 
@@ -229,17 +214,16 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8200/v1/sys/health
 | 501 | Uninitialized |
 | 503 | Sealed |
 
-After a Vault process restart, expect 503 for a few seconds. The unseal sidecar should return health to 200. If it stays sealed:
+After a Vault process restart, expect 503 (sealed). Re-run the one-shot:
 
 ```bash
-docker logs vault-cluster-unseal
-./setup.sh
+cd local && docker compose run --rm bootstrap
 ```
 
 Vault fails closed when audit cannot write. If every request is denied:
 
 ```bash
-docker exec vault-cluster-vault sh -c 'ls -la /vault/logs && df -h /vault/logs'
+cd local && docker compose exec vault sh -c 'ls -la /vault/logs && df -h /vault/logs'
 ```
 
 ## Backup, restore, and disaster recovery
@@ -248,52 +232,55 @@ A snapshot is the whole cluster (secrets, policies, tokens). Treat it like Vault
 
 Keep the matching `vault-init.json` with each snapshot. After restore, Vault unseals only with the shares that were current when the snapshot was taken.
 
+Snapshots are written to `local/.bootstrap/backups/` on the host, which the bootstrap container sees as `/bootstrap/backups/`.
+
 ### Backup
 
 ```bash
 cd local
-./bootstrap/snapshot.sh take
-./bootstrap/snapshot.sh list
-./bootstrap/snapshot.sh verify .bootstrap/backups/vault-<stamp>.snap
+docker compose run --rm bootstrap snapshot take
+docker compose run --rm bootstrap snapshot list
+docker compose run --rm bootstrap snapshot verify /bootstrap/backups/vault-<stamp>.snap
 ```
 
 ### Restore (destructive)
 
+Restore needs a token with `sys/storage/raft/snapshot-force`. The operator token cannot restore; generate a break-glass root first (see [Break-glass](#break-glass)).
+
 ```bash
 cd local
-./bootstrap/snapshot.sh restore .bootstrap/backups/vault-<stamp>.snap --yes
-./setup.sh
+docker compose run --rm -e VAULT_TOKEN=<break-glass-root> bootstrap snapshot restore /bootstrap/backups/vault-<stamp>.snap --yes
+docker compose run --rm bootstrap
 ```
 
 ### Restore drill
 
 ```bash
 cd local
-./setup.sh
+docker compose up -d --build
 export VAULT_ADDR=http://127.0.0.1:8200
 export VAULT_TOKEN=$(cat .bootstrap/provisioning.token)
-../scripts/tenants/create-tenant.sh tenant-a
+docker compose run --rm -e VAULT_TOKEN bootstrap tenants create tenant-a
 
-./bootstrap/snapshot.sh take
+docker compose run --rm bootstrap snapshot take
 cp .bootstrap/vault-init.json /tmp/keys-at-snapshot.json
 
-../scripts/tenants/create-tenant.sh tenant-drill
-./reset.sh --yes
+docker compose run --rm -e VAULT_TOKEN bootstrap tenants create tenant-drill
+docker compose down --volumes --remove-orphans && rm -rf .bootstrap
 
-./bootstrap/up.sh
+docker compose up -d
 cp /tmp/keys-at-snapshot.json .bootstrap/vault-init.json
-./bootstrap/snapshot.sh restore .bootstrap/backups/vault-<stamp>.snap --yes
-./setup.sh
-../tests/run-conformance.sh --layer isolation
+# generate a break-glass root (see Break-glass), then:
+docker compose run --rm -e VAULT_TOKEN=<break-glass-root> bootstrap snapshot restore /bootstrap/backups/vault-<stamp>.snap --yes
+docker compose run --rm bootstrap
+go test ./internal/vaultcluster -run TestIsolationMatrix
 ```
 
 Expected: `tenant-a` exists, `tenant-drill` does not, isolation suite passes.
 
 ### If unseal keys are lost
 
-The Raft volume cannot be unsealed. Data is gone. That is Shamir working. Restore from a snapshot that still has its matching keys, or run `./local/reset.sh --yes` and start empty.
-
-PostgreSQL is not in the Vault snapshot. Dynamic credentials are re-issued. The fixture schema is recreated by `local/postgres/init.sh` on a fresh volume.
+The Raft volume cannot be unsealed. Data is gone. That is Shamir working. Restore from a snapshot that still has its matching keys, or destroy the volumes (`docker compose down --volumes --remove-orphans && rm -rf .bootstrap` in `local/`) and start empty.
 
 ## Break-glass
 
@@ -320,20 +307,14 @@ curl -s -X DELETE "${VAULT_ADDR}/v1/sys/generate-root/attempt"
 ## Testing
 
 ```bash
-./tests/lint/lint-self-test.sh
+go test -short ./...
 
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN=$(cat local/.bootstrap/provisioning.token)
+go test ./internal/vaultcluster
 
-./tests/run-conformance.sh --layer isolation
-
-ENABLE_DYNAMIC_CREDENTIALS=true \
-  PSQL_CMD='docker compose -f local/docker-compose.yml --env-file local/.env exec -T postgres psql' \
-  AUDIT_READ_CMD='docker compose -f local/docker-compose.yml --env-file local/.env exec -T vault cat /vault/logs/audit.log' \
-  ./tests/run-conformance.sh --layer all
-
-cd local && ./tests/runtime-test.sh
+go test ./local
 ```
+
+In `local/`, `TestLocalComposeStatic` lints `compose.yml` (digest pins, no dev mode, loopback-only ports). `TestLocalComposeRuntime` brings up an isolated copy of the Compose stack and verifies the one-shot bootstrap, Shamir over Raft, audit/Raft volume separation, and persistence across a restart. It never touches your dev stack or `local/.bootstrap/`.
 
 Denials must be HTTP 403. A 404 is a different failure.
 
@@ -343,11 +324,10 @@ Denials must be HTTP 403. A 404 is a different failure.
 |---|---|
 | Docker daemon is not running | Start Docker Desktop |
 | Port already allocated | Change `VAULT_HOST_PORT` in `local/.env` |
-| Initialized but `.bootstrap` missing | Restore `vault-init.json`, or `./local/reset.sh --yes` |
-| Health 503 | Wait for the unseal sidecar, then `./setup.sh` |
+| Initialized but `.bootstrap` missing | Restore `vault-init.json`, or destroy volumes and start empty |
+| Health 503 | Vault is sealed. Run `docker compose run --rm bootstrap` in `local/` |
 | Permission denied on tenant create | Use the provisioning token, not operator |
 | Permission denied on tenant secrets | Expected for provisioning |
-| `failed to verify connection` | Start with `--with-credentials` |
 | Everything denied | Audit volume full or unwritable |
 
 ## Security
@@ -360,4 +340,4 @@ Denials must be HTTP 403. A 404 is a different failure.
 - Provisioning cannot read tenant KV
 - Operator cannot read tenant KV
 - Local Compose sets `disable_mlock = true` because Docker and GitHub Actions cannot mlock. Production hosts should use `IPC_LOCK`
-- Dynamic credentials: bounded TTL, revoke drops the Postgres role, residue scan expects zero leftover `v-*` roles
+- Dynamic credentials (Go library and tests only): bounded TTL, revoke drops the Postgres role, residue scan expects zero leftover `v-*` roles
