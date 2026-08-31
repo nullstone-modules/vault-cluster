@@ -140,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compose file is valid and PostgreSQL is profile-gated
+      - name: Compose file is valid with a one-shot bootstrap
         run: |
           set -euo pipefail
           cd local
@@ -159,19 +159,9 @@ jobs:
             exit 1
           fi
           if printf '%s\n' "${default_svcs}" | grep -qx 'postgres'; then
-            echo "FAIL: postgres appears without the credentials profile"
+            echo "FAIL: the local stack must not run PostgreSQL"
             exit 1
           fi
-
-          cred_svcs="$(COMPOSE_PROFILES=credentials docker compose --env-file .env --profile credentials config --services)"
-          printf 'credentials services:\n%s\n' "${cred_svcs}"
-          if ! printf '%s\n' "${cred_svcs}" | grep -qx 'postgres'; then
-            echo "FAIL: postgres missing from the credentials profile"
-            exit 1
-          fi
-
-          grep -A20 '^  postgres:' compose.yml | grep -q 'credentials' \
-            || { echo "FAIL: postgres is not declared behind the credentials profile in compose.yml"; exit 1; }
 
   docs:
     name: documentation

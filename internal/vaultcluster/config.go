@@ -31,25 +31,24 @@ type Config struct {
 
 func ConfigFromEnv() Config {
 	c := Config{
-		Addr:              getenv("VAULT_ADDR", ""),
-		Token:             getenv("VAULT_TOKEN", ""),
-		KVMount:           getenv("KV_MOUNT", "kv"),
-		TenantPrefix:      getenv("TENANT_PREFIX", "customers"),
-		AuthMount:         getenv("AUTH_MOUNT", "approle"),
-		DatabaseMount:     getenv("DATABASE_MOUNT", "database"),
-		AuditPath:         getenv("AUDIT_LOG_PATH", "/vault/logs/audit.log"),
-		AuditDevice:       getenv("AUDIT_DEVICE_NAME", "file"),
-		EnableAudit:       getenv("ENABLE_AUDIT", "true") == "true",
-		EnableCredentials: getenv("ENABLE_DYNAMIC_CREDENTIALS", "false") == "true",
-		DatabaseURL:       os.Getenv("DATABASE_CONNECTION_URL"),
-		DatabaseUsername:  getenv("DATABASE_USERNAME", "vault_admin"),
-		DatabasePassword:  os.Getenv("DATABASE_PASSWORD"),
-		DatabaseConnName:  getenv("DATABASE_CONNECTION_NAME", "app"),
-		DatabaseTTL:       getenv("DATABASE_DEFAULT_TTL", "1h"),
-		DatabaseMaxTTL:    getenv("DATABASE_MAX_TTL", "24h"),
-		TokenTTL:          getenv("DEFAULT_TOKEN_TTL", "1h"),
-		TokenMaxTTL:       getenv("MAX_TOKEN_TTL", "24h"),
-		HTTPTimeout:       15 * time.Second,
+		Addr:          getenv("VAULT_ADDR", ""),
+		Token:         getenv("VAULT_TOKEN", ""),
+		KVMount:       getenv("KV_MOUNT", "kv"),
+		TenantPrefix:  getenv("TENANT_PREFIX", "customers"),
+		AuthMount:     getenv("AUTH_MOUNT", "approle"),
+		DatabaseMount: getenv("DATABASE_MOUNT", "database"),
+		AuditPath:     getenv("AUDIT_LOG_PATH", "/vault/logs/audit.log"),
+		AuditDevice:   getenv("AUDIT_DEVICE_NAME", "file"),
+		EnableAudit:   getenv("ENABLE_AUDIT", "true") == "true",
+		// The dynamic-credentials fields (EnableCredentials, DatabaseURL,
+		// DatabaseUsername, ...) are never set from the environment: the
+		// database engine is configured only by callers that opt in
+		// programmatically. DatabaseMount stays because the tenant and
+		// platform policies reference its paths even when the engine is
+		// not mounted.
+		TokenTTL:    getenv("DEFAULT_TOKEN_TTL", "1h"),
+		TokenMaxTTL: getenv("MAX_TOKEN_TTL", "24h"),
+		HTTPTimeout: 15 * time.Second,
 	}
 	return c
 }

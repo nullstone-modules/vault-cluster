@@ -27,7 +27,7 @@ func usage() {
 
 Commands:
   bootstrap local|aws|azure|gcp    Initialize a cluster: init (once), unseal, configure
-  tenants create <id> [--no-credentials]
+  tenants create <id>
   tenants destroy <id> --yes [--purge-secrets]
   snapshot take|list|verify <file>|restore <file> --yes
   health
@@ -84,20 +84,16 @@ func runTenants(c *vaultcluster.Client, args []string) error {
 	sub, rest := args[0], args[1:]
 	switch sub {
 	case "create":
-		issue := true
 		id := ""
 		for _, a := range rest {
-			switch a {
-			case "--no-credentials":
-				issue = false
-			default:
+			if !strings.HasPrefix(a, "-") {
 				id = a
 			}
 		}
 		if id == "" {
-			return fmt.Errorf("usage: vault-utils tenants create <id> [--no-credentials]")
+			return fmt.Errorf("usage: vault-utils tenants create <id>")
 		}
-		return c.CreateTenant(id, issue)
+		return c.CreateTenant(id, true)
 	case "destroy":
 		yes, purge := false, false
 		id := ""

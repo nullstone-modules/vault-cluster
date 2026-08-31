@@ -8,9 +8,6 @@ on:
 permissions:
   contents: read
 
-env:
-  VAULT_ADDR: http://127.0.0.1:8200
-
 jobs:
   go:
     name: go tests (docker)
@@ -27,53 +24,15 @@ jobs:
         run: go test ./internal/vaultcluster -count=1 -timeout 15m
 
   stack:
-    name: compose one-shot
+    name: compose runtime conformance
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare environment
-        working-directory: local
-        run: cp .env.example .env
-
-      - name: Setup
-        working-directory: local
-        run: ./setup.sh
-
-      - name: Confirm no database container is running
-        working-directory: local
-        run: |
-          set -euo pipefail
-          running="$(docker compose ps --format '{{.Service}}')"
-          echo "running: ${running}"
-          if echo "${running}" | grep -q postgres; then
-            echo "FAIL: PostgreSQL is running during the isolation-only job"
-            exit 1
-          fi
-
-      - name: Local runtime tests
-        working-directory: local
-        run: ./runtime-test.sh
-
-      - name: Capture diagnostics on failure
-        if: failure()
-        working-directory: local
-        run: |
-          docker compose logs vault > /tmp/vault.log 2>&1 || true
-          docker compose logs > /tmp/services.log 2>&1 || true
-
-      - name: Upload diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - uses: actions/setup-go@v5
         with:
-          name: stack-diagnostics
-          path: |
-            /tmp/vault.log
-            /tmp/services.log
-          retention-days: 3
+          go-version: "1.23.x"
 
-      - name: Tear down
-        if: always()
-        working-directory: local
-        run: ./reset.sh --yes || true
+      - name: Local compose runtime test
+        run: go test ./local -count=1 -timeout 15m -v

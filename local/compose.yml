@@ -2,33 +2,28 @@ name: vault-cluster
 
 services:
   vault:
-    image: hashicorp/vault:1.21.4@sha256:4e33b126a59c0c333b76fb4e894722462659a6bec7c48c9ee8cea56fccfd2569
-    container_name: vault-cluster-vault
+    image: hashicorp/vault:2.0@sha256:5be49781ecf78bfe775c5309c6a4d9f4e9e040b6c885c99eb2b12fb69855e1a2
     restart: unless-stopped
     command: ["vault", "server", "-config=/vault/config/config.hcl"]
     cap_add:
       - IPC_LOCK
     environment:
-      VAULT_ADDR: "http://127.0.0.1:8200"
-      VAULT_CLUSTER_NAME: "${VAULT_CLUSTER_NAME:-vault-local}"
-      VAULT_LOG_LEVEL: "info"
-      VAULT_LOG_FORMAT: "json"
       SKIP_CHOWN: "true"
       SKIP_SETCAP: "true"
     ports:
+      # Loopback only. Binding 0.0.0.0 would expose an unsealed plaintext Vault
+      # to the LAN.
       - "127.0.0.1:${VAULT_HOST_PORT:-8200}:8200"
     volumes:
       - ./vault/config.hcl:/vault/config/config.hcl:ro
       - vault-data:/vault/file
       - vault-audit:/vault/logs
     healthcheck:
-      test:
-        - CMD
-        - wget
-        - --quiet
-        - --tries=1
-        - --spider
-        - http://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedcode=200&uninitcode=200
+      # Sealed and uninitialized still count as healthy so the one-shot
+      # bootstrap can start and perform init/unseal.
+      test: >-
+        wget --quiet --tries=1 --spider
+        'http://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedcode=200&uninitcode=200'
       interval: 5s
       timeout: 3s
       retries: 12
@@ -51,49 +46,15 @@ services:
       AUDIT_LOG_PATH: /vault/logs/audit.log
       VAULT_INIT_KEY_SHARES: "${VAULT_INIT_KEY_SHARES:-5}"
       VAULT_INIT_KEY_THRESHOLD: "${VAULT_INIT_KEY_THRESHOLD:-3}"
-      ENABLE_DYNAMIC_CREDENTIALS: "${ENABLE_DYNAMIC_CREDENTIALS:-false}"
-      DATABASE_CONNECTION_URL: "postgresql://{{username}}:{{password}}@postgres:5432/${POSTGRES_DB:-appdb}?sslmode=disable"
-      DATABASE_USERNAME: vault_admin
-      DATABASE_PASSWORD: "${VAULT_DB_ADMIN_PASSWORD:-}"
     volumes:
-      - ./.bootstrap:/bootstrap
+      - "${BOOTSTRAP_HOST_DIR:-./.bootstrap}:/bootstrap"
     command: ["bootstrap", "local"]
-    networks:
-      - vault-cluster
-
-  postgres:
-    image: postgres:16.15-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
-    container_name: vault-cluster-postgres
-    restart: unless-stopped
-    profiles: ["credentials"]
-    environment:
-      POSTGRES_DB: "${POSTGRES_DB:-appdb}"
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
-      VAULT_DB_ADMIN_PASSWORD: "${VAULT_DB_ADMIN_PASSWORD:?VAULT_DB_ADMIN_PASSWORD must be set}"
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
-    ports:
-      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"${POSTGRES_USER:-postgres}\" -d \"${POSTGRES_DB:-appdb}\""]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-      start_period: 5s
     networks:
       - vault-cluster
 
 volumes:
   vault-data:
-    name: vault-cluster-vault-data
   vault-audit:
-    name: vault-cluster-vault-audit
-  postgres-data:
-    name: vault-cluster-postgres-data
 
 networks:
   vault-cluster:
-    name: vault-cluster-network
