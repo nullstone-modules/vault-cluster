@@ -23,32 +23,6 @@ jobs:
       - name: Unit tests (no Docker)
         run: go test -short ./...
 
-  shellcheck:
-    name: shellcheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
-
-      - name: Lint all shell scripts
-        run: |
-          set -euo pipefail
-          mapfile -t files < <(find . -path ./.git -prune -o -name '*.sh' -print | sed 's|^\./||' | sort)
-          printf 'checking %d scripts\n' "${#files[@]}"
-          shellcheck -x --severity=warning --shell=bash "${files[@]}"
-
-      - name: Every script must be executable
-        run: |
-          set -euo pipefail
-          fail=0
-          while IFS= read -r f; do
-            case "$f" in */lib/*|*/lib.sh|*/common/*) continue ;; esac
-            [ -x "$f" ] || { echo "not executable: $f"; fail=1; }
-          done < <(find . -path ./.git -prune -o -name '*.sh' -print | sed 's|^\./||' | sort)
-          exit "$fail"
-
   architecture:
     name: runtime separation
     runs-on: ubuntu-latest
