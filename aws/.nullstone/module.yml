@@ -1,0 +1,14 @@
+org_name: nullstone
+name: aws-vault-ec2-cluster
+friendly_name: Vault EC2 Cluster
+description: Self-hosted Vault CE on an EC2 Auto Scaling Group with an internal NLB.
+category: cluster
+subcategory: ""
+provider_types:
+  - aws
+platform: vault
+subplatform: ec2
+type: ""
+appCategories: []
+is_public: false
+tool_name: opentofu
