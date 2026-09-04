@@ -9,7 +9,7 @@ Applications share one Vault. They do not see each other's secrets. Isolation is
 | Target | Role | Status |
 |---|---|---|
 | `local/` | Docker Compose | Implemented |
-| `aws/` | AWS | Not implemented |
+| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | Connections, IAM, Secrets Manager tokens, security groups. ASG/NLB not built yet. |
 | `gcp/` | GCP | Not implemented |
 | `azure/` | Azure | Not implemented |
 
@@ -46,10 +46,10 @@ Implemented:
 
 Not implemented:
 
-- AWS, GCP, Azure, Kubernetes
-- Production KMS auto-unseal
+- AWS ASG, NLB, AMI, user-data, and `bootstrap aws`
+- GCP, Azure, Kubernetes
+- Production KMS auto-unseal on a running cluster
 - TLS, multi-node Raft, DR replication
-- OpenTofu / Terraform
 
 Local unseal submits Shamir shares (5 shares, threshold 3) for laptop use. It is not AWS KMS, Cloud KMS, or Azure Key Vault auto-unseal.
 
@@ -82,7 +82,7 @@ vault-cluster/
 ├── cmd/                  Go app entrypoints (vault-utils CLI)
 ├── internal/             Go libraries, policy templates, lint fixtures
 ├── local/                Compose target, snapshots
-├── aws/                  Nullstone Terraform module (not yet implemented)
+├── aws/aws-ec2-vault-cluster/   Nullstone module (IAM/SM/SG; no ASG yet)
 ├── gcp/                  Nullstone Terraform module (not yet implemented)
 └── azure/                Nullstone Terraform module (not yet implemented)
 ```
@@ -317,6 +317,30 @@ go test ./local
 In `local/`, `TestLocalComposeStatic` lints `compose.yml` (digest pins, no dev mode, loopback-only ports). `TestLocalComposeRuntime` brings up an isolated copy of the Compose stack and verifies the one-shot bootstrap, Shamir over Raft, audit/Raft volume separation, and persistence across a restart. It never touches your dev stack or `local/.bootstrap/`.
 
 Denials must be HTTP 403. A 404 is a different failure.
+
+### AWS module (`aws/aws-ec2-vault-cluster/`)
+
+`go test` does not cover this directory. The current slice is OpenTofu only (connections, IAM, Secrets Manager, security groups). There is no Docker or live-AWS test in CI.
+
+From `aws/aws-ec2-vault-cluster/`:
+
+```bash
+tofu fmt -check
+tofu init -backend=false
+tofu validate
+```
+
+`tofu plan` and `tofu apply` need a Nullstone workspace plus AWS credentials. Without them, plan fails with `no nullstone workspace 0/0/0` and missing AWS credentials. That is expected. Do not `tofu apply` from this repo unless you intend to create IAM, Secrets Manager, and security groups.
+
+To plan against real connections:
+
+1. Install the Nullstone CLI (`ns`).
+2. In an AWS Nullstone stack, attach this module and connect:
+   - `network` → `network/aws/vpc` (same VPC pattern as Nullstone EC2 apps)
+   - `snapshots_bucket` → `datastore/aws/s3` (snapshot bucket)
+   - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
+3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
+4. In the plan, expect an IAM role + instance profile, SSM attach, inline IAM policy, three Secrets Manager secrets (`init` / `provisioning` / `operator`), and two security groups (NLB + nodes) with the 8200/8201/8210 rules. No ASG, NLB, or launch template yet.
 
 ## Troubleshooting
 
