@@ -1,0 +1,14 @@
+org_name: nullstone
+name: aws-ec2-vault-cluster
+friendly_name: Vault Cluster (AWS EC2)
+description: Self-hosted Vault cluster running on an EC2 Auto Scaling Group
+category: datastore
+subcategory: ""
+provider_types:
+  - aws
+platform: vault
+subplatform: ec2
+type: ""
+appCategories: []
+is_public: true
+tool_name: opentofu

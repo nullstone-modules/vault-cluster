@@ -9,7 +9,7 @@ Applications share one Vault. They do not see each other's secrets. Isolation is
 | Target | Role | Status |
 |---|---|---|
 | `local/` | Docker Compose | Implemented |
-| `aws/` | `aws-vault-ec2-cluster` | Connections, IAM, Secrets Manager tokens, security groups. ASG/NLB not built yet. |
+| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | Connections, IAM, Secrets Manager tokens, security groups. ASG/NLB not built yet. |
 | `gcp/` | GCP | Not implemented |
 | `azure/` | Azure | Not implemented |
 
@@ -82,7 +82,7 @@ vault-cluster/
 ├── cmd/                  Go app entrypoints (vault-utils CLI)
 ├── internal/             Go libraries, policy templates, lint fixtures
 ├── local/                Compose target, snapshots
-├── aws/                  Nullstone module `aws-vault-ec2-cluster` (IAM/SM/SG; no ASG yet)
+├── aws/aws-ec2-vault-cluster/   Nullstone module (IAM/SM/SG; no ASG yet)
 ├── gcp/                  Nullstone Terraform module (not yet implemented)
 └── azure/                Nullstone Terraform module (not yet implemented)
 ```
@@ -318,11 +318,11 @@ In `local/`, `TestLocalComposeStatic` lints `compose.yml` (digest pins, no dev m
 
 Denials must be HTTP 403. A 404 is a different failure.
 
-### AWS module (`aws/`)
+### AWS module (`aws/aws-ec2-vault-cluster/`)
 
 `go test` does not cover this directory. The current slice is OpenTofu only (connections, IAM, Secrets Manager, security groups). There is no Docker or live-AWS test in CI.
 
-From `aws/`:
+From `aws/aws-ec2-vault-cluster/`:
 
 ```bash
 tofu fmt -check
@@ -337,7 +337,7 @@ To plan against real connections:
 1. Install the Nullstone CLI (`ns`).
 2. In an AWS Nullstone stack, attach this module and connect:
    - `network` → `network/aws/vpc` (same VPC pattern as Nullstone EC2 apps)
-   - `s3_bucket` → `datastore/aws/s3` (snapshot bucket)
+   - `snapshots_bucket` → `datastore/aws/s3` (snapshot bucket)
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
 4. In the plan, expect an IAM role + instance profile, SSM attach, inline IAM policy, three Secrets Manager secrets (`init` / `provisioning` / `operator`), and two security groups (NLB + nodes) with the 8200/8201/8210 rules. No ASG, NLB, or launch template yet.
