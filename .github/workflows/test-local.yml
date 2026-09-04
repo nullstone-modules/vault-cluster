@@ -1,0 +1,38 @@
+name: test-local
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: go tests (docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      - name: Isolation and credentials
+        run: go test ./internal/vaultcluster -count=1 -timeout 15m
+
+  stack:
+    name: compose runtime conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      - name: Local compose runtime test
+        run: go test ./local -count=1 -timeout 15m -v

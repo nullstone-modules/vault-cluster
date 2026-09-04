@@ -1,0 +1,150 @@
+# Static validation.
+name: validate
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: go unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      - name: Unit tests (no Docker)
+        run: go test -short ./...
+
+  architecture:
+    name: runtime separation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: HTTP-only trees must not reference any runtime
+        run: |
+          set -euo pipefail
+          fail=0
+          check() {
+            local pattern="$1" label="$2"
+            if grep -rInE "$pattern" \
+                 internal/vaultcluster/policies \
+                 --include='*.sh' --include='*.tpl' --include='*.hcl' \
+                 | grep -vE '^\s*[^:]+:[0-9]+:\s*#' ; then
+              echo "FAIL: HTTP-only tree references $label"
+              fail=1
+            fi
+          }
+          check '\bdocker\b'              'docker'
+          check '\bdocker[- ]compose\b'   'docker compose'
+          check 'vault-cluster-(vault|postgres)'  'container names'
+          check '/vault/(file|logs|config)' 'container filesystem paths'
+          exit "$fail"
+
+  security:
+    name: secret scan and CE guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No bootstrap material is committed
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            echo "FAIL: bootstrap material committed: $f"; fail=1
+          done < <(find . -path ./.git -prune -o \
+                     \( -name 'vault-init.json' -o -name '*.snap' \
+                        -o -name '*.token' -o -name 'unseal*' \) -print)
+
+          if grep -rInE 'hvs\.[A-Za-z0-9_-]{20,}|"root_token"\s*:\s*"hvs' . \
+               --exclude-dir=.git --exclude=CHANGELOG.md; then
+            echo "FAIL: what looks like a real Vault token is committed"; fail=1
+          fi
+          exit "$fail"
+
+      - name: Fake credentials are labelled as fake
+        run: |
+          set -euo pipefail
+          if grep -rInE '(password|secret|api_key)\s*[:=]\s*"[A-Za-z0-9]{16,}"' \
+               local internal 2>/dev/null \
+               | grep -viE 'FAKE-|local-dev-|\{\{|\$\{|not-a-real'; then
+            echo "FAIL: an unlabelled credential-shaped literal was found"
+            exit 1
+          fi
+
+      - name: No Vault Enterprise features are used
+        run: |
+          set -euo pipefail
+          fail=0
+          if grep -rInE 'sys/namespaces|X-Vault-Namespace|sys/replication|sys/control-group|sentinel' \
+               local/ cmd/ internal/ --include='*.sh' --include='*.hcl' --include='*.tpl' --include='*.go' \
+               | grep -vE ':\s*#' | grep -v 'VAULT_NAMESPACE'; then
+            echo "FAIL: Vault Enterprise-only feature referenced (Community Edition only)"
+            fail=1
+          fi
+          if grep -rIn 'hashicorp/vault-enterprise' local cmd internal --exclude-dir=.git; then
+            echo "FAIL: Enterprise image referenced"; fail=1
+          fi
+          exit "$fail"
+
+      - name: Images are pinned by digest
+        run: |
+          set -euo pipefail
+          fail=0
+          if grep -nE '^\s*image:' local/compose.yml | grep -v '@sha256:'; then
+            echo "FAIL: an image is not digest-pinned"; fail=1
+          fi
+          if grep -rn ':latest' local/ --include='*.yml' --include='.env.example'; then
+            echo "FAIL: ':latest' found - the environment could change without a commit"; fail=1
+          fi
+          exit "$fail"
+
+  compose:
+    name: compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose file is valid with a one-shot bootstrap
+        run: |
+          set -euo pipefail
+          cd local
+          cp .env.example .env
+
+          docker compose --env-file .env config --quiet
+
+          default_svcs="$(docker compose --env-file .env config --services)"
+          printf 'default services:\n%s\n' "${default_svcs}"
+          if printf '%s\n' "${default_svcs}" | grep -qx 'unseal'; then
+            echo "FAIL: long-running unseal sidecar should not be a default service"
+            exit 1
+          fi
+          if ! printf '%s\n' "${default_svcs}" | grep -qx 'bootstrap'; then
+            echo "FAIL: bootstrap one-shot missing from default compose services"
+            exit 1
+          fi
+          if printf '%s\n' "${default_svcs}" | grep -qx 'postgres'; then
+            echo "FAIL: the local stack must not run PostgreSQL"
+            exit 1
+          fi
+
+  docs:
+    name: documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Required documents exist
+        run: |
+          set -euo pipefail
+          [ -f README.md ] || { echo "missing: README.md"; exit 1; }
+          [ -f CHANGELOG.md ] || { echo "missing: CHANGELOG.md"; exit 1; }
