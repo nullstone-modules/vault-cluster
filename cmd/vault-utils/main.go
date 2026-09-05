@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster"
 )
@@ -29,10 +30,11 @@ Commands:
   bootstrap local|aws|azure|gcp    Initialize a cluster: init (once), unseal, configure
   tenants create <id>
   tenants destroy <id> --yes [--purge-secrets]
-  snapshot take|list|verify <file>|restore <file> --yes
-  health
+  snapshot take|list|verify <file>|restore <file> --yes|schedule
+  health [serve]
 
 Key material for bootstrap local is stored under BOOTSTRAP_DIR (default .bootstrap).
+AWS uses Secrets Manager ARNs and optional SNAPSHOT_BUCKET.
 `)
 }
 
@@ -50,6 +52,9 @@ func run(cmd string, args []string) error {
 	case "snapshot":
 		return runSnapshot(c, args)
 	case "health":
+		if len(args) > 0 && args[0] == "serve" {
+			return runHealthServe(c)
+		}
 		return c.Health()
 	default:
 		usage()
@@ -65,12 +70,25 @@ func runBootstrap(c *vaultcluster.Client, args []string) error {
 	case "local":
 		shares, _ := strconv.Atoi(getenv("VAULT_INIT_KEY_SHARES", "5"))
 		threshold, _ := strconv.Atoi(getenv("VAULT_INIT_KEY_THRESHOLD", "3"))
-		return c.RunBootstrap(keyStore(), vaultcluster.BootstrapOptions{
+		return c.RunBootstrap(fileKeyStore(), vaultcluster.BootstrapOptions{
 			Shares:    shares,
 			Threshold: threshold,
 			KeepRoot:  getenv("KEEP_ROOT", "false") == "true",
 		})
-	case "aws", "azure", "gcp":
+	case "aws":
+		store, err := awsKeyStore()
+		if err != nil {
+			return err
+		}
+		shares, _ := strconv.Atoi(getenv("VAULT_INIT_RECOVERY_SHARES", "1"))
+		threshold, _ := strconv.Atoi(getenv("VAULT_INIT_RECOVERY_THRESHOLD", "1"))
+		return c.RunBootstrap(store, vaultcluster.BootstrapOptions{
+			Shares:     shares,
+			Threshold:  threshold,
+			KeepRoot:   getenv("KEEP_ROOT", "false") == "true",
+			AutoUnseal: true,
+		})
+	case "azure", "gcp":
 		return fmt.Errorf("bootstrap %s is not implemented yet", args[0])
 	default:
 		return fmt.Errorf("unknown platform %q (local, aws, azure, gcp)", args[0])
@@ -120,7 +138,7 @@ func runTenants(c *vaultcluster.Client, args []string) error {
 
 func runSnapshot(c *vaultcluster.Client, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: vault-utils snapshot take|list|verify <file>|restore <file> --yes")
+		return fmt.Errorf("usage: vault-utils snapshot take|list|verify <file>|restore <file> --yes|schedule")
 	}
 	backupDir := filepath.Join(bootstrapDir(), "backups")
 	switch args[0] {
@@ -128,7 +146,7 @@ func runSnapshot(c *vaultcluster.Client, args []string) error {
 		if err := useOperatorToken(c); err != nil {
 			return err
 		}
-		file, err := c.SnapshotTake(backupDir)
+		file, err := takeSnapshot(c, backupDir)
 		if err != nil {
 			return err
 		}
@@ -136,12 +154,12 @@ func runSnapshot(c *vaultcluster.Client, args []string) error {
 		log.Printf("this file contains every secret in the cluster; treat it as one")
 		return nil
 	case "list":
-		files, err := vaultcluster.SnapshotList(backupDir)
+		files, err := listSnapshots(backupDir)
 		if err != nil {
 			return err
 		}
 		if len(files) == 0 {
-			log.Printf("no snapshots under %s", backupDir)
+			log.Printf("no snapshots")
 			return nil
 		}
 		for _, f := range files {
@@ -170,16 +188,83 @@ func runSnapshot(c *vaultcluster.Client, args []string) error {
 		log.Printf("restore submitted; Vault will seal")
 		log.Printf("unseal with the key shares that were current when this snapshot was taken")
 		return nil
+	case "schedule":
+		return runSnapshotSchedule(c, backupDir)
 	default:
-		return fmt.Errorf("unknown subcommand %q (take, list, verify, restore)", args[0])
+		return fmt.Errorf("unknown subcommand %q (take, list, verify, restore, schedule)", args[0])
 	}
+}
+
+func runSnapshotSchedule(c *vaultcluster.Client, backupDir string) error {
+	sched, err := vaultcluster.ParseBackupSchedule(os.Getenv("BACKUP_SCHEDULE"))
+	if err != nil {
+		return err
+	}
+	if sched == nil {
+		log.Printf("scheduled snapshots disabled")
+		return nil
+	}
+	if err := useOperatorToken(c); err != nil {
+		return err
+	}
+	for {
+		wait := time.Until(sched.Next(time.Now()))
+		if wait > 0 {
+			time.Sleep(wait)
+		}
+		file, err := takeSnapshot(c, backupDir)
+		if err != nil {
+			log.Printf("snapshot failed: %v", err)
+			continue
+		}
+		log.Printf("snapshot written: %s", file)
+	}
+}
+
+func runHealthServe(c *vaultcluster.Client) error {
+	nodeID := os.Getenv("VAULT_RAFT_NODE_ID")
+	if nodeID == "" {
+		return fmt.Errorf("VAULT_RAFT_NODE_ID is required for health serve")
+	}
+	if err := useOperatorToken(c); err != nil {
+		return err
+	}
+	addr := getenv("VAULT_HEALTH_ADDR", ":8210")
+	log.Printf("health listening on %s", addr)
+	return c.ServeHealth(addr, nodeID)
+}
+
+func takeSnapshot(c *vaultcluster.Client, backupDir string) (string, error) {
+	if bucket := os.Getenv("SNAPSHOT_BUCKET"); bucket != "" {
+		store, err := vaultcluster.NewS3ObjectStore()
+		if err != nil {
+			return "", err
+		}
+		return c.SnapshotTakeS3(store, bucket, getenv("SNAPSHOT_PREFIX", "vault-snapshots"))
+	}
+	return c.SnapshotTake(backupDir)
+}
+
+func listSnapshots(backupDir string) ([]string, error) {
+	if bucket := os.Getenv("SNAPSHOT_BUCKET"); bucket != "" {
+		store, err := vaultcluster.NewS3ObjectStore()
+		if err != nil {
+			return nil, err
+		}
+		return vaultcluster.SnapshotListS3(store, bucket, getenv("SNAPSHOT_PREFIX", "vault-snapshots"))
+	}
+	return vaultcluster.SnapshotList(backupDir)
 }
 
 func useOperatorToken(c *vaultcluster.Client) error {
 	if c.Cfg.Token != "" {
 		return nil
 	}
-	tok, err := keyStore().LoadToken("operator")
+	store, err := keyStore()
+	if err != nil {
+		return err
+	}
+	tok, err := store.LoadToken("operator")
 	if err != nil {
 		return fmt.Errorf("set VAULT_TOKEN or bootstrap first (operator token not found): %w", err)
 	}
@@ -188,8 +273,23 @@ func useOperatorToken(c *vaultcluster.Client) error {
 	return nil
 }
 
-func keyStore() vaultcluster.FileKeyStore {
+func keyStore() (vaultcluster.KeyStore, error) {
+	if os.Getenv("VAULT_OPERATOR_SECRET_ARN") != "" || os.Getenv("VAULT_INIT_SECRET_ARN") != "" {
+		return awsKeyStore()
+	}
+	return fileKeyStore(), nil
+}
+
+func fileKeyStore() vaultcluster.FileKeyStore {
 	return vaultcluster.FileKeyStore{Dir: bootstrapDir()}
+}
+
+func awsKeyStore() (*vaultcluster.SecretsManagerKeyStore, error) {
+	return vaultcluster.NewSecretsManagerKeyStore(
+		os.Getenv("VAULT_INIT_SECRET_ARN"),
+		os.Getenv("VAULT_PROVISIONING_SECRET_ARN"),
+		os.Getenv("VAULT_OPERATOR_SECRET_ARN"),
+	)
 }
 
 func bootstrapDir() string {
