@@ -9,9 +9,10 @@ import (
 )
 
 type BootstrapOptions struct {
-	Shares    int
-	Threshold int
-	KeepRoot  bool
+	Shares     int
+	Threshold  int
+	KeepRoot   bool
+	AutoUnseal bool
 }
 
 const revokedRootMarker = "revoked-at-bootstrap"
@@ -26,23 +27,18 @@ func (c *Client) RunBootstrap(store KeyStore, opts BootstrapOptions) error {
 		return err
 	}
 	if !st.Initialized {
-		log.Printf("initializing Vault (%d/%d Shamir)", opts.Shares, opts.Threshold)
-		resp, err := c.API.Sys().Init(&api.InitRequest{
-			SecretShares:    opts.Shares,
-			SecretThreshold: opts.Threshold,
-		})
-		if err != nil {
+		if err := c.initVault(store, opts); err != nil {
 			return err
 		}
-		if err := store.SaveInit(resp); err != nil {
-			return err
-		}
-		log.Printf("initialized; key material saved (not logged)")
 	} else if _, err := store.LoadInit(); err != nil {
 		return fmt.Errorf("Vault is initialized but key material is missing: %w", err)
 	}
 
-	if err := c.unseal(store, opts.Threshold); err != nil {
+	if opts.AutoUnseal {
+		if err := c.waitUnsealed(); err != nil {
+			return err
+		}
+	} else if err := c.unseal(store, opts.Threshold); err != nil {
 		return err
 	}
 
@@ -95,6 +91,52 @@ func (c *Client) RunBootstrap(store KeyStore, opts BootstrapOptions) error {
 		log.Printf("revoked the initial root token")
 	}
 	return nil
+}
+
+func initRequest(opts BootstrapOptions) *api.InitRequest {
+	if opts.AutoUnseal {
+		return &api.InitRequest{
+			RecoveryShares:    opts.Shares,
+			RecoveryThreshold: opts.Threshold,
+		}
+	}
+	return &api.InitRequest{
+		SecretShares:    opts.Shares,
+		SecretThreshold: opts.Threshold,
+	}
+}
+
+func (c *Client) initVault(store KeyStore, opts BootstrapOptions) error {
+	if opts.AutoUnseal {
+		log.Printf("initializing Vault (recovery %d/%d, auto-unseal)", opts.Shares, opts.Threshold)
+	} else {
+		log.Printf("initializing Vault (%d/%d Shamir)", opts.Shares, opts.Threshold)
+	}
+	resp, err := c.API.Sys().Init(initRequest(opts))
+	if err != nil {
+		return err
+	}
+	if err := store.SaveInit(resp); err != nil {
+		return err
+	}
+	log.Printf("initialized; key material saved (not logged)")
+	return nil
+}
+
+func (c *Client) waitUnsealed() error {
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		st, err := c.API.Sys().SealStatus()
+		if err != nil {
+			time.Sleep(time.Second)
+			continue
+		}
+		if !st.Sealed {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("Vault remained sealed (auto-unseal failed)")
 }
 
 func (c *Client) WaitReady(timeout time.Duration) error {

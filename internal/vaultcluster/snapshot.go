@@ -12,25 +12,36 @@ import (
 	"time"
 )
 
-func (c *Client) SnapshotTake(dir string) (string, error) {
+func (c *Client) raftSnapshot() ([]byte, error) {
 	req := c.API.NewRequest("GET", "/v1/sys/storage/raft/snapshot")
 	resp, err := c.API.RawRequest(req)
 	if err != nil {
-		return "", fmt.Errorf("snapshot failed: %w", err)
+		return nil, fmt.Errorf("snapshot failed: %w", err)
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if len(b) == 0 {
-		return "", fmt.Errorf("snapshot is empty; refusing to keep it")
+		return nil, fmt.Errorf("snapshot is empty; refusing to keep it")
+	}
+	return b, nil
+}
+
+func snapshotStamp() string {
+	return time.Now().UTC().Format("20060102T150405Z")
+}
+
+func (c *Client) SnapshotTake(dir string) (string, error) {
+	b, err := c.raftSnapshot()
+	if err != nil {
+		return "", err
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	stamp := time.Now().UTC().Format("20060102T150405Z")
-	file := filepath.Join(dir, "vault-"+stamp+".snap")
+	file := filepath.Join(dir, "vault-"+snapshotStamp()+".snap")
 	if err := os.WriteFile(file, b, 0o600); err != nil {
 		return "", err
 	}
