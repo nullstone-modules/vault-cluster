@@ -3,3 +3,5 @@ provider "aws" {
     tags = local.tags
   }
 }
+
+data "aws_region" "this" {}

@@ -114,6 +114,10 @@ func (c *Client) initVault(store KeyStore, opts BootstrapOptions) error {
 	}
 	resp, err := c.API.Sys().Init(initRequest(opts))
 	if err != nil {
+		st, stErr := c.API.Sys().SealStatus()
+		if stErr == nil && st.Initialized {
+			return nil
+		}
 		return err
 	}
 	if err := store.SaveInit(resp); err != nil {

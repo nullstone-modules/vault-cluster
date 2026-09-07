@@ -55,3 +55,15 @@ func TestNodeRaftReadyRequiresNodeID(t *testing.T) {
 		t.Fatal("expected empty node id to fail")
 	}
 }
+
+func TestNodeIsLeader(t *testing.T) {
+	if !NodeIsLeader("n1", autopilot("n1", "leader", true, []string{"n1"})) {
+		t.Fatal("expected leader")
+	}
+	if NodeIsLeader("n1", autopilot("n1", "voter", true, []string{"n1"})) {
+		t.Fatal("expected follower to be false")
+	}
+	if NodeIsLeader("n2", autopilot("n1", "leader", true, []string{"n1"})) {
+		t.Fatal("expected other node to be false")
+	}
+}

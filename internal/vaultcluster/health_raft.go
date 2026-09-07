@@ -46,6 +46,18 @@ func parseAutopilot(data map[string]any) []raftServer {
 	return out
 }
 
+func NodeIsLeader(nodeID string, data map[string]any) bool {
+	if nodeID == "" || data == nil {
+		return false
+	}
+	for _, s := range parseAutopilot(data) {
+		if s.ID == nodeID && s.Status == "leader" {
+			return true
+		}
+	}
+	return false
+}
+
 func NodeRaftReady(nodeID string, data map[string]any) error {
 	if nodeID == "" {
 		return fmt.Errorf("VAULT_RAFT_NODE_ID is not set")

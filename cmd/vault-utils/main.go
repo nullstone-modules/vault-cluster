@@ -215,10 +215,22 @@ func runSnapshotSchedule(c *vaultcluster.Client, backupDir string) error {
 	if err := useOperatorToken(c); err != nil {
 		return err
 	}
+	nodeID := os.Getenv("VAULT_RAFT_NODE_ID")
 	for {
 		wait := time.Until(sched.Next(time.Now()))
 		if wait > 0 {
 			time.Sleep(wait)
+		}
+		if nodeID != "" {
+			data, err := c.RaftAutopilot()
+			if err != nil {
+				log.Printf("snapshot skipped: %v", err)
+				continue
+			}
+			if !vaultcluster.NodeIsLeader(nodeID, data) {
+				log.Printf("snapshot skipped: not raft leader")
+				continue
+			}
 		}
 		file, err := takeSnapshot(c, backupDir)
 		if err != nil {

@@ -1,3 +1,8 @@
+output "ami_id" {
+  value       = local.ami
+  description = "string ||| AMI ID for Vault nodes."
+}
+
 output "role_name" {
   value       = aws_iam_role.this.name
   description = "string ||| IAM role name for Vault EC2 instances."
