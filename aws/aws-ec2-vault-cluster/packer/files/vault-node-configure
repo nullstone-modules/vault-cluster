@@ -35,7 +35,7 @@ mv "${ENV_FILE}.tmp" "$ENV_FILE"
 chown vault:vault "$ENV_FILE"
 chmod 0600 "$ENV_FILE"
 
-cat >/etc/vault.d/aws.hcl <<HCL
+cat >/etc/vault.d/cloud.hcl <<HCL
 cluster_name = "${VAULT_CLUSTER_TAG_VALUE}"
 
 storage "raft" {
@@ -56,8 +56,8 @@ seal "awskms" {
 api_addr     = "http://${PRIVATE_IP}:8200"
 cluster_addr = "http://${PRIVATE_IP}:8201"
 HCL
-chown vault:vault /etc/vault.d/aws.hcl
-chmod 0640 /etc/vault.d/aws.hcl
+chown vault:vault /etc/vault.d/cloud.hcl
+chmod 0640 /etc/vault.d/cloud.hcl
 
 systemctl daemon-reload
 systemctl enable --now amazon-ssm-agent

@@ -1,0 +1,10 @@
+[Unit]
+Description=Vault node configure
+After=network-online.target
+Wants=network-online.target
+Before=vault.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/vault-node-configure

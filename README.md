@@ -354,7 +354,7 @@ packer init .
 packer build -var region="$AWS_REGION" vault.pkr.hcl
 ```
 
-The bake installs Vault CE 2.0, `vault-utils`, base `vault.hcl`, systemd units, and `vault-node-configure`. User-data only writes workspace env and runs that script. Override with `ami` when using a different architecture.
+The bake installs Vault CE 2.0, `vault-utils`, base `vault.hcl`, systemd units, and `vault-node-configure`. User-data only writes workspace env. A path unit runs configure and starts Vault. Override with `ami` when using a different architecture.
 
 ## Troubleshooting
 

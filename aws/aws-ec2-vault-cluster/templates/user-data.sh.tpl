@@ -4,6 +4,7 @@ set -euo pipefail
 cat >/etc/vault.d/vault-utils.env <<ENV
 VAULT_ADDR=http://127.0.0.1:8200
 VAULT_HEALTH_ADDR=:8210
+VAULT_PLATFORM=aws
 VAULT_INIT_SECRET_ARN=${init_secret_arn}
 VAULT_PROVISIONING_SECRET_ARN=${provisioning_secret_arn}
 VAULT_OPERATOR_SECRET_ARN=${operator_secret_arn}
@@ -18,5 +19,3 @@ VAULT_CLUSTER_TAG_VALUE=${vault_cluster_tag_value}
 ENV
 chown vault:vault /etc/vault.d/vault-utils.env
 chmod 0600 /etc/vault.d/vault-utils.env
-
-/usr/local/bin/vault-node-configure

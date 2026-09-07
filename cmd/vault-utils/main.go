@@ -71,10 +71,17 @@ func run(cmd string, args []string) error {
 }
 
 func runBootstrap(c *vaultcluster.Client, args []string) error {
-	if len(args) < 1 {
+	platform := ""
+	if len(args) > 0 {
+		platform = args[0]
+	}
+	if platform == "" {
+		platform = os.Getenv("VAULT_PLATFORM")
+	}
+	if platform == "" {
 		return fmt.Errorf("usage: vault-utils bootstrap local|aws|azure|gcp")
 	}
-	switch args[0] {
+	switch platform {
 	case "local":
 		shares, _ := strconv.Atoi(getenv("VAULT_INIT_KEY_SHARES", "5"))
 		threshold, _ := strconv.Atoi(getenv("VAULT_INIT_KEY_THRESHOLD", "3"))
