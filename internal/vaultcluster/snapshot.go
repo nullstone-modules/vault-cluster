@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func (c *Client) raftSnapshot() ([]byte, error) {
+func (c *Client) RaftSnapshot() ([]byte, error) {
 	req := c.API.NewRequest("GET", "/v1/sys/storage/raft/snapshot")
 	resp, err := c.API.RawRequest(req)
 	if err != nil {
@@ -34,7 +34,7 @@ func snapshotStamp() string {
 }
 
 func (c *Client) SnapshotTake(dir string) (string, error) {
-	b, err := c.raftSnapshot()
+	b, err := c.RaftSnapshot()
 	if err != nil {
 		return "", err
 	}

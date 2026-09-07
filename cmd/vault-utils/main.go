@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nullstone-modules/vault-cluster/internal/aws/s3"
+	"github.com/nullstone-modules/vault-cluster/internal/aws/secretsmanager"
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster"
 )
 
@@ -24,17 +26,23 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `vault-utils <command> <subcommand>
+	fmt.Fprintf(os.Stderr, `vault-utils <command> [args]
 
 Commands:
-  bootstrap local|aws|azure|gcp    Initialize a cluster: init (once), unseal, configure
+  bootstrap local|aws|azure|gcp     Init once, unseal, configure
   tenants create <id>
   tenants destroy <id> --yes [--purge-secrets]
-  snapshot take|list|verify <file>|restore <file> --yes|schedule
-  health [serve]
+  snapshot take                     Write a Raft snapshot
+  snapshot list
+  snapshot verify <file>
+  snapshot restore <file> --yes
+  snapshot schedule                 Cron loop (BACKUP_SCHEDULE; empty disables)
+  health                            Print seal status
+  health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
 
-Key material for bootstrap local is stored under BOOTSTRAP_DIR (default .bootstrap).
-AWS uses Secrets Manager ARNs and optional SNAPSHOT_BUCKET.
+Local key material: BOOTSTRAP_DIR (default .bootstrap).
+AWS: VAULT_INIT_SECRET_ARN, VAULT_PROVISIONING_SECRET_ARN, VAULT_OPERATOR_SECRET_ARN.
+Optional: SNAPSHOT_BUCKET, SNAPSHOT_PREFIX (default vault-snapshots).
 `)
 }
 
@@ -138,7 +146,7 @@ func runTenants(c *vaultcluster.Client, args []string) error {
 
 func runSnapshot(c *vaultcluster.Client, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: vault-utils snapshot take|list|verify <file>|restore <file> --yes|schedule")
+		return fmt.Errorf("usage: vault-utils snapshot take | list | verify <file> | restore <file> --yes | schedule")
 	}
 	backupDir := filepath.Join(bootstrapDir(), "backups")
 	switch args[0] {
@@ -236,22 +244,26 @@ func runHealthServe(c *vaultcluster.Client) error {
 
 func takeSnapshot(c *vaultcluster.Client, backupDir string) (string, error) {
 	if bucket := os.Getenv("SNAPSHOT_BUCKET"); bucket != "" {
-		store, err := vaultcluster.NewS3ObjectStore()
+		store, err := s3.New()
 		if err != nil {
 			return "", err
 		}
-		return c.SnapshotTakeS3(store, bucket, getenv("SNAPSHOT_PREFIX", "vault-snapshots"))
+		b, err := c.RaftSnapshot()
+		if err != nil {
+			return "", err
+		}
+		return s3.PutSnapshot(store, bucket, getenv("SNAPSHOT_PREFIX", "vault-snapshots"), b)
 	}
 	return c.SnapshotTake(backupDir)
 }
 
 func listSnapshots(backupDir string) ([]string, error) {
 	if bucket := os.Getenv("SNAPSHOT_BUCKET"); bucket != "" {
-		store, err := vaultcluster.NewS3ObjectStore()
+		store, err := s3.New()
 		if err != nil {
 			return nil, err
 		}
-		return vaultcluster.SnapshotListS3(store, bucket, getenv("SNAPSHOT_PREFIX", "vault-snapshots"))
+		return s3.ListSnapshots(store, bucket, getenv("SNAPSHOT_PREFIX", "vault-snapshots"))
 	}
 	return vaultcluster.SnapshotList(backupDir)
 }
@@ -284,8 +296,8 @@ func fileKeyStore() vaultcluster.FileKeyStore {
 	return vaultcluster.FileKeyStore{Dir: bootstrapDir()}
 }
 
-func awsKeyStore() (*vaultcluster.SecretsManagerKeyStore, error) {
-	return vaultcluster.NewSecretsManagerKeyStore(
+func awsKeyStore() (*secretsmanager.KeyStore, error) {
+	return secretsmanager.New(
 		os.Getenv("VAULT_INIT_SECRET_ARN"),
 		os.Getenv("VAULT_PROVISIONING_SECRET_ARN"),
 		os.Getenv("VAULT_OPERATOR_SECRET_ARN"),

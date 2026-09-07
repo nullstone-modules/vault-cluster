@@ -1,4 +1,4 @@
-package vaultcluster
+package secretsmanager
 
 import (
 	"context"
@@ -26,8 +26,8 @@ func (m memSecrets) Put(_ context.Context, arn string, val []byte) error {
 	return nil
 }
 
-func testSMStore(m memSecrets) SecretsManagerKeyStore {
-	return SecretsManagerKeyStore{
+func testStore(m memSecrets) KeyStore {
+	return KeyStore{
 		Secrets:         m,
 		InitARN:         "arn:init",
 		ProvisioningARN: "arn:provisioning",
@@ -35,8 +35,8 @@ func testSMStore(m memSecrets) SecretsManagerKeyStore {
 	}
 }
 
-func TestSecretsManagerKeyStoreRoundTrip(t *testing.T) {
-	store := testSMStore(memSecrets{})
+func TestKeyStoreRoundTrip(t *testing.T) {
+	store := testStore(memSecrets{})
 	init := &api.InitResponse{RootToken: "hvs.root", RecoveryKeysB64: []string{"abc"}}
 	if err := store.SaveInit(init); err != nil {
 		t.Fatal(err)
@@ -60,8 +60,8 @@ func TestSecretsManagerKeyStoreRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSecretsManagerKeyStoreFailClosed(t *testing.T) {
-	store := testSMStore(memSecrets{})
+func TestKeyStoreFailClosed(t *testing.T) {
+	store := testStore(memSecrets{})
 	if _, err := store.LoadInit(); err == nil {
 		t.Fatal("expected missing init to fail")
 	}
@@ -77,28 +77,8 @@ func TestSecretsManagerKeyStoreFailClosed(t *testing.T) {
 	}
 }
 
-func TestNewSecretsManagerKeyStoreRequiresARNs(t *testing.T) {
-	if _, err := NewSecretsManagerKeyStore("", "a", "b"); err == nil {
+func TestNewRequiresARNs(t *testing.T) {
+	if _, err := New("", "a", "b"); err == nil {
 		t.Fatal("expected error")
-	}
-}
-
-func TestInitRequestAutoUnsealUsesRecovery(t *testing.T) {
-	req := initRequest(BootstrapOptions{Shares: 1, Threshold: 1, AutoUnseal: true})
-	if req.RecoveryShares != 1 || req.RecoveryThreshold != 1 {
-		t.Fatalf("recovery: %+v", req)
-	}
-	if req.SecretShares != 0 || req.SecretThreshold != 0 {
-		t.Fatalf("shamir should be unset: %+v", req)
-	}
-}
-
-func TestInitRequestLocalUsesShamir(t *testing.T) {
-	req := initRequest(BootstrapOptions{Shares: 5, Threshold: 3})
-	if req.SecretShares != 5 || req.SecretThreshold != 3 {
-		t.Fatalf("shamir: %+v", req)
-	}
-	if req.RecoveryShares != 0 {
-		t.Fatalf("recovery should be unset: %+v", req)
 	}
 }

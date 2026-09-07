@@ -1,4 +1,4 @@
-package vaultcluster
+package secretsmanager
 
 import (
 	"context"
@@ -12,19 +12,19 @@ import (
 	"github.com/hashicorp/vault/api"
 )
 
-type secretKV interface {
+type SecretStore interface {
 	Get(ctx context.Context, arn string) ([]byte, error)
 	Put(ctx context.Context, arn string, val []byte) error
 }
 
-type SecretsManagerKeyStore struct {
-	Secrets         secretKV
+type KeyStore struct {
+	Secrets         SecretStore
 	InitARN         string
 	ProvisioningARN string
 	OperatorARN     string
 }
 
-func NewSecretsManagerKeyStore(initARN, provisioningARN, operatorARN string) (*SecretsManagerKeyStore, error) {
+func New(initARN, provisioningARN, operatorARN string) (*KeyStore, error) {
 	if initARN == "" || provisioningARN == "" || operatorARN == "" {
 		return nil, fmt.Errorf("VAULT_INIT_SECRET_ARN, VAULT_PROVISIONING_SECRET_ARN, and VAULT_OPERATOR_SECRET_ARN are required")
 	}
@@ -32,7 +32,7 @@ func NewSecretsManagerKeyStore(initARN, provisioningARN, operatorARN string) (*S
 	if err != nil {
 		return nil, fmt.Errorf("AWS credentials: %w", err)
 	}
-	return &SecretsManagerKeyStore{
+	return &KeyStore{
 		Secrets:         smClient{inner: secretsmanager.NewFromConfig(cfg)},
 		InitARN:         initARN,
 		ProvisioningARN: provisioningARN,
@@ -40,7 +40,7 @@ func NewSecretsManagerKeyStore(initARN, provisioningARN, operatorARN string) (*S
 	}, nil
 }
 
-func (s SecretsManagerKeyStore) tokenARN(name string) (string, error) {
+func (s KeyStore) tokenARN(name string) (string, error) {
 	switch name {
 	case "provisioning":
 		return s.ProvisioningARN, nil
@@ -51,7 +51,7 @@ func (s SecretsManagerKeyStore) tokenARN(name string) (string, error) {
 	}
 }
 
-func (s SecretsManagerKeyStore) SaveInit(resp *api.InitResponse) error {
+func (s KeyStore) SaveInit(resp *api.InitResponse) error {
 	b, err := json.Marshal(resp)
 	if err != nil {
 		return err
@@ -59,7 +59,7 @@ func (s SecretsManagerKeyStore) SaveInit(resp *api.InitResponse) error {
 	return s.Secrets.Put(context.Background(), s.InitARN, b)
 }
 
-func (s SecretsManagerKeyStore) LoadInit() (*api.InitResponse, error) {
+func (s KeyStore) LoadInit() (*api.InitResponse, error) {
 	raw, err := s.Secrets.Get(context.Background(), s.InitARN)
 	if err != nil {
 		return nil, err
@@ -71,7 +71,7 @@ func (s SecretsManagerKeyStore) LoadInit() (*api.InitResponse, error) {
 	return &resp, nil
 }
 
-func (s SecretsManagerKeyStore) SaveToken(name, token string) error {
+func (s KeyStore) SaveToken(name, token string) error {
 	arn, err := s.tokenARN(name)
 	if err != nil {
 		return err
@@ -79,7 +79,7 @@ func (s SecretsManagerKeyStore) SaveToken(name, token string) error {
 	return s.Secrets.Put(context.Background(), arn, []byte(token))
 }
 
-func (s SecretsManagerKeyStore) LoadToken(name string) (string, error) {
+func (s KeyStore) LoadToken(name string) (string, error) {
 	arn, err := s.tokenARN(name)
 	if err != nil {
 		return "", err

@@ -81,7 +81,8 @@ vault-cluster/
 ├── CHANGELOG.md
 ├── Dockerfile            vault-utils image
 ├── cmd/                  Go app entrypoints (vault-utils CLI)
-├── internal/             Go libraries, policy templates, lint fixtures
+├── internal/vaultcluster/ shared Vault library
+├── internal/aws/         AWS adapters (secretsmanager, s3)
 ├── local/                Compose target, snapshots
 ├── aws/aws-ec2-vault-cluster/   Nullstone module (IAM/SM/SG; vault-utils AWS; no ASG yet)
 ├── gcp/                  Nullstone Terraform module (not yet implemented)
@@ -90,7 +91,7 @@ vault-cluster/
 
 ## Prerequisites
 
-Docker Desktop (Compose v2). Go 1.23 for `go test`. `curl` and `jq` for the manual examples below; Vault CLI is optional except break-glass decode.
+Docker Desktop (Compose v2). Go 1.26 for `go test`. `curl` and `jq` for the manual examples below; Vault CLI is optional except break-glass decode.
 
 Images are pinned by tag and digest in `local/compose.yml` (Vault 2.0, PostgreSQL 18-alpine). Never `latest`.
 
@@ -321,7 +322,7 @@ Denials must be HTTP 403. A 404 is a different failure.
 
 ### AWS module (`aws/aws-ec2-vault-cluster/`)
 
-OpenTofu in this directory is connections, IAM, Secrets Manager, and security groups. `go test ./internal/vaultcluster` covers the AWS vault-utils logic (SM KeyStore, Raft health rule, S3 key/list, cron parse) with fakes. There is no live-AWS test in CI.
+OpenTofu in this directory is connections, IAM, Secrets Manager, and security groups. `go test ./internal/aws/...` covers the SM KeyStore and S3 snapshot helpers. `go test ./internal/vaultcluster` covers Raft health and cron parse. There is no live-AWS test in CI.
 
 From `aws/aws-ec2-vault-cluster/`:
 
