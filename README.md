@@ -9,7 +9,7 @@ Applications share one Vault. They do not see each other's secrets. Isolation is
 | Target | Role | Status |
 |---|---|---|
 | `local/` | Docker Compose | Implemented |
-| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | Connections, IAM, Secrets Manager tokens, security groups. ASG/NLB not built yet. |
+| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | Connections, IAM, SM, security groups. `bootstrap aws`, health on 8210, S3 snapshots. ASG/NLB not built yet. |
 | `gcp/` | GCP | Not implemented |
 | `azure/` | Azure | Not implemented |
 
@@ -43,12 +43,13 @@ Implemented:
 - File audit on a volume separate from Raft
 - Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
 - Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
+- `bootstrap aws` (KMS auto-unseal, Secrets Manager tokens), health on 8210, S3 snapshots
 
 Not implemented:
 
-- AWS ASG, NLB, AMI, user-data, and `bootstrap aws`
+- AWS ASG, NLB, AMI, and user-data
 - GCP, Azure, Kubernetes
-- Production KMS auto-unseal on a running cluster
+- KMS auto-unseal proven on a running EC2 cluster
 - TLS, multi-node Raft, DR replication
 
 Local unseal submits Shamir shares (5 shares, threshold 3) for laptop use. It is not AWS KMS, Cloud KMS, or Azure Key Vault auto-unseal.
@@ -80,16 +81,17 @@ vault-cluster/
 ├── CHANGELOG.md
 ├── Dockerfile            vault-utils image
 ├── cmd/                  Go app entrypoints (vault-utils CLI)
-├── internal/             Go libraries, policy templates, lint fixtures
+├── internal/vaultcluster/ shared Vault library
+├── internal/aws/         AWS adapters (secretsmanager, s3)
 ├── local/                Compose target, snapshots
-├── aws/aws-ec2-vault-cluster/   Nullstone module (IAM/SM/SG; no ASG yet)
+├── aws/aws-ec2-vault-cluster/   Nullstone module (IAM/SM/SG; vault-utils AWS; no ASG yet)
 ├── gcp/                  Nullstone Terraform module (not yet implemented)
 └── azure/                Nullstone Terraform module (not yet implemented)
 ```
 
 ## Prerequisites
 
-Docker Desktop (Compose v2). Go 1.23 for `go test`. `curl` and `jq` for the manual examples below; Vault CLI is optional except break-glass decode.
+Docker Desktop (Compose v2). Go 1.26 for `go test`. `curl` and `jq` for the manual examples below; Vault CLI is optional except break-glass decode.
 
 Images are pinned by tag and digest in `local/compose.yml` (Vault 2.0, PostgreSQL 18-alpine). Never `latest`.
 
@@ -320,7 +322,7 @@ Denials must be HTTP 403. A 404 is a different failure.
 
 ### AWS module (`aws/aws-ec2-vault-cluster/`)
 
-`go test` does not cover this directory. The current slice is OpenTofu only (connections, IAM, Secrets Manager, security groups). There is no Docker or live-AWS test in CI.
+OpenTofu in this directory is connections, IAM, Secrets Manager, and security groups. `go test ./internal/aws/...` covers the SM KeyStore and S3 snapshot helpers. `go test ./internal/vaultcluster` covers Raft health and cron parse. There is no live-AWS test in CI.
 
 From `aws/aws-ec2-vault-cluster/`:
 
