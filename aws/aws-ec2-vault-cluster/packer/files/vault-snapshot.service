@@ -1,0 +1,15 @@
+[Unit]
+Description=Vault raft snapshots
+After=vault-bootstrap.service
+Requires=vault-bootstrap.service
+
+[Service]
+EnvironmentFile=/etc/vault.d/vault-utils.env
+ExecStart=/usr/local/bin/vault-utils snapshot schedule
+Restart=always
+RestartSec=30
+User=vault
+Group=vault
+
+[Install]
+WantedBy=multi-user.target

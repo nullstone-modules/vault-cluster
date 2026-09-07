@@ -18,15 +18,15 @@ variable "vault_version" {
 
 source "amazon-ebs" "vault" {
   ami_name        = "nullstone-vault-{{timestamp}}"
-  ami_description = "Vault CE and vault-utils for aws-ec2-vault-cluster"
-  instance_type   = "t4g.micro"
+  ami_description = "Vault node for self-hosting a vault cluster with nullstone vault-utils"
+  instance_type   = "t3.micro"
   region          = var.region
   ssh_username    = "ec2-user"
 
   source_ami_filter {
     filters = {
-      name                = "al2023-ami-*-kernel-6.1-arm64"
-      architecture        = "arm64"
+      name                = "al2023-ami-*-kernel-6.1-x86_64"
+      architecture        = "x86_64"
       root-device-type    = "ebs"
       virtualization-type = "hvm"
     }
@@ -42,9 +42,18 @@ source "amazon-ebs" "vault" {
 build {
   sources = ["source.amazon-ebs.vault"]
 
+  provisioner "shell" {
+    inline = ["mkdir -p /tmp/vault-image"]
+  }
+
   provisioner "file" {
     source      = "vault-utils"
     destination = "/tmp/vault-utils"
+  }
+
+  provisioner "file" {
+    source      = "files/"
+    destination = "/tmp/vault-image"
   }
 
   provisioner "shell" {

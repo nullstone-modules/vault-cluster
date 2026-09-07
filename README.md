@@ -345,16 +345,16 @@ To plan against real connections:
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
 4. In the plan, expect an IAM role + instance profile, SSM attach, inline IAM policy, three Secrets Manager secrets (`init` / `provisioning` / `operator`), two security groups (NLB + nodes) with the 8200/8201/8210 rules, a launch template (baked AMI + user-data), and no ASG or NLB yet.
 
-Bake the node AMI (arm64, matches default `t4g.micro`) from `aws/aws-ec2-vault-cluster/packer/`:
+Bake the node AMI (x86_64, matches default `t3.micro`) from `aws/aws-ec2-vault-cluster/packer/`:
 
 ```bash
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o aws/aws-ec2-vault-cluster/packer/vault-utils ./cmd/vault-utils
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o aws/aws-ec2-vault-cluster/packer/vault-utils ./cmd/vault-utils
 cd aws/aws-ec2-vault-cluster/packer
 packer init .
 packer build -var region="$AWS_REGION" vault.pkr.hcl
 ```
 
-The bake installs Vault CE 2.0 and `vault-utils`. User-data does not download binaries. Override with `ami` when using a different architecture.
+The bake installs Vault CE 2.0, `vault-utils`, base `vault.hcl`, systemd units, and `vault-node-configure`. User-data only writes workspace env and runs that script. Override with `ami` when using a different architecture.
 
 ## Troubleshooting
 
