@@ -104,9 +104,9 @@ func runBootstrap(c *vaultcluster.Client, args []string) error {
 			AutoUnseal: true,
 		})
 	case "azure", "gcp":
-		return fmt.Errorf("bootstrap %s is not implemented yet", args[0])
+		return fmt.Errorf("bootstrap %s is not implemented yet", platform)
 	default:
-		return fmt.Errorf("unknown platform %q (local, aws, azure, gcp)", args[0])
+		return fmt.Errorf("unknown platform %q (local, aws, azure, gcp)", platform)
 	}
 }
 
