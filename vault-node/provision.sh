@@ -18,7 +18,6 @@ install -m 0640 -o vault -g vault /tmp/vault-image/vault.hcl /etc/vault.d/vault.
 install -m 0755 /tmp/vault-image/vault-node-configure /usr/local/bin/vault-node-configure
 install -m 0644 /tmp/vault-image/vault.service /etc/systemd/system/vault.service
 install -m 0644 /tmp/vault-image/vault-configure.service /etc/systemd/system/vault-configure.service
-install -m 0644 /tmp/vault-image/vault-configure.path /etc/systemd/system/vault-configure.path
 install -m 0644 /tmp/vault-image/vault-bootstrap.service /etc/systemd/system/vault-bootstrap.service
 install -m 0644 /tmp/vault-image/vault-health.service /etc/systemd/system/vault-health.service
 install -m 0644 /tmp/vault-image/vault-snapshot.service /etc/systemd/system/vault-snapshot.service
@@ -28,4 +27,10 @@ bash -n /usr/local/bin/vault-node-configure
 /usr/local/bin/vault-utils >/dev/null || true
 
 systemctl daemon-reload
-systemctl enable amazon-ssm-agent vault-configure.path vault.service
+systemctl enable \
+  amazon-ssm-agent \
+  vault-configure.service \
+  vault.service \
+  vault-bootstrap.service \
+  vault-health.service \
+  vault-snapshot.service

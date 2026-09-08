@@ -56,6 +56,11 @@ build {
     destination = "/tmp/vault-image"
   }
 
+  provisioner "file" {
+    source      = "aws/vault-node-configure"
+    destination = "/tmp/vault-image/vault-node-configure"
+  }
+
   provisioner "shell" {
     environment_vars = [
       "VAULT_VERSION=${var.vault_version}",

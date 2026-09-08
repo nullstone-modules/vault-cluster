@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENV_FILE=/etc/vault.d/vault-utils.env
+NODE_ENV_FILE=/etc/vault.d/node.env
+CLOUD_HCL=/etc/vault.d/cloud.hcl
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "missing $ENV_FILE" >&2
+  exit 1
+fi
+
+# Read values individually. This file is systemd EnvironmentFile format and
+# holds cron expressions, so sourcing it in bash is not safe.
+env_value() {
+  local value
+  value="$(sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1)"
+  if [ -z "$value" ]; then
+    echo "missing $1 in $ENV_FILE" >&2
+    exit 1
+  fi
+  printf '%s' "$value"
+}
+
+AWS_REGION="$(env_value AWS_REGION)"
+UNSEAL_KMS_KEY_ARN="$(env_value UNSEAL_KMS_KEY_ARN)"
+VAULT_CLUSTER_TAG_KEY="$(env_value VAULT_CLUSTER_TAG_KEY)"
+VAULT_CLUSTER_TAG_VALUE="$(env_value VAULT_CLUSTER_TAG_VALUE)"
+
+imds_token() {
+  curl -fsS -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"
+}
+
+imds() {
+  curl -fsS -H "X-aws-ec2-metadata-token: $1" "http://169.254.169.254/latest/meta-data/$2"
+}
+
+TOKEN="$(imds_token)"
+INSTANCE_ID="$(imds "$TOKEN" instance-id)"
+PRIVATE_IP="$(imds "$TOKEN" local-ipv4)"
+
+printf 'VAULT_RAFT_NODE_ID=%s\n' "$INSTANCE_ID" >"$NODE_ENV_FILE"
+chown vault:vault "$NODE_ENV_FILE"
+chmod 0640 "$NODE_ENV_FILE"
+
+cat >"$CLOUD_HCL" <<HCL
+cluster_name = "${VAULT_CLUSTER_TAG_VALUE}"
+
+storage "raft" {
+  path    = "/opt/vault/data"
+  node_id = "${INSTANCE_ID}"
+
+  retry_join {
+    auto_join        = "provider=aws region=${AWS_REGION} tag_key=${VAULT_CLUSTER_TAG_KEY} tag_value=${VAULT_CLUSTER_TAG_VALUE} addr_type=private_v4"
+    auto_join_scheme = "http"
+  }
+}
+
+seal "awskms" {
+  region     = "${AWS_REGION}"
+  kms_key_id = "${UNSEAL_KMS_KEY_ARN}"
+}
+
+api_addr     = "http://${PRIVATE_IP}:8200"
+cluster_addr = "http://${PRIVATE_IP}:8201"
+HCL
+chown vault:vault "$CLOUD_HCL"
+chmod 0640 "$CLOUD_HCL"

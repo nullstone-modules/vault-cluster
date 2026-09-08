@@ -1,12 +1,14 @@
 [Unit]
 Description=Vault raft snapshots
-After=vault-bootstrap.service
 Requires=vault-bootstrap.service
+After=vault-bootstrap.service
 
 [Service]
 EnvironmentFile=/etc/vault.d/vault-utils.env
+EnvironmentFile=/etc/vault.d/node.env
 ExecStart=/usr/local/bin/vault-utils snapshot schedule
-Restart=always
+# An empty BACKUP_SCHEDULE exits 0, which leaves this unit stopped instead of looping.
+Restart=on-failure
 RestartSec=30
 User=vault
 Group=vault

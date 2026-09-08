@@ -1,8 +1,0 @@
-[Unit]
-Description=Watch Vault env
-
-[Path]
-PathExists=/etc/vault.d/vault-utils.env
-
-[Install]
-WantedBy=multi-user.target

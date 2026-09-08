@@ -1,8 +1,7 @@
 [Unit]
 Description=Vault
-Requires=network-online.target
+Requires=network-online.target vault-configure.service
 After=network-online.target vault-configure.service
-ConditionPathExists=/etc/vault.d/cloud.hcl
 
 [Service]
 User=vault

@@ -345,16 +345,18 @@ To plan against real connections:
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
 4. In the plan, expect an IAM role + instance profile, SSM attach, inline IAM policy, three Secrets Manager secrets (`init` / `provisioning` / `operator`), two security groups (NLB + nodes) with the 8200/8201/8210 rules, a launch template (baked AMI + user-data), and no ASG or NLB yet.
 
-Bake the node AMI (x86_64, matches default `t3.micro`) from `aws/aws-ec2-vault-cluster/packer/`:
+Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
 
 ```bash
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o aws/aws-ec2-vault-cluster/packer/vault-utils ./cmd/vault-utils
-cd aws/aws-ec2-vault-cluster/packer
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o vault-node/vault-utils ./cmd/vault-utils
+cd vault-node
 packer init .
 packer build -var region="$AWS_REGION" vault.pkr.hcl
 ```
 
-The bake installs Vault CE 2.0, `vault-utils`, base `vault.hcl`, systemd units, and `vault-node-configure`. User-data only writes workspace env. A path unit runs configure and starts Vault. Override with `ami` when using a different architecture.
+`vault-node/files/` holds the cloud-neutral image content: base `vault.hcl` and the systemd units. `vault-node/aws/vault-node-configure` is the only AWS-specific piece, and other clouds add a sibling directory. The bake installs Vault CE 2.0, `vault-utils`, and that content, then enables every unit.
+
+On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/cloud.hcl` and `/etc/vault.d/node.env`, and exits. Systemd ordering then starts Vault, bootstrap, health, and snapshots. User-data only writes `/etc/vault.d/vault-utils.env`. Override with `ami` when using a different architecture.
 
 ## Troubleshooting
 
