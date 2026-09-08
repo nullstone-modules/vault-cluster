@@ -13,7 +13,7 @@ variable "region" {
 
 variable "vault_version" {
   type    = string
-  default = "2.0.0"
+  default = "2.0.4"
 }
 
 source "amazon-ebs" "vault" {
@@ -62,6 +62,7 @@ build {
   }
 
   provisioner "shell" {
+    execute_command = "chmod +x {{ .Path }}; sudo -E sh -c '{{ .Vars }} {{ .Path }}'"
     environment_vars = [
       "VAULT_VERSION=${var.vault_version}",
     ]
