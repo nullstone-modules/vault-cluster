@@ -1,7 +1,9 @@
 [Unit]
 Description=Vault raft health
-Requires=vault-bootstrap.service
-After=vault-bootstrap.service
+# Ordered after bootstrap but not bound to it: a failed bootstrap attempt is retried by
+# its own unit and must not cancel this one. The endpoint stays non-200 until bootstrap completes.
+Requires=vault.service
+After=vault.service vault-bootstrap.service
 
 [Service]
 EnvironmentFile=/etc/vault.d/vault-utils.env

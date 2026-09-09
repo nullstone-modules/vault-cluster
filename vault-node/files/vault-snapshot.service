@@ -1,7 +1,8 @@
 [Unit]
 Description=Vault raft snapshots
-Requires=vault-bootstrap.service
-After=vault-bootstrap.service
+# Ordered after bootstrap but not bound to it, for the same reason as vault-health.service.
+Requires=vault.service
+After=vault.service vault-bootstrap.service
 
 [Service]
 EnvironmentFile=/etc/vault.d/vault-utils.env

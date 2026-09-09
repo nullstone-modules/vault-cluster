@@ -8,7 +8,8 @@ fi
 install -d -m 0750 -o vault -g vault /opt/vault /opt/vault/data /opt/vault/audit /etc/vault.d
 
 dnf install -y unzip
-tmp="$(mktemp -d)"
+# /tmp is a small tmpfs on AL2023; the Vault zip and binary do not fit on a 1 GB instance.
+tmp="$(mktemp -d /var/tmp/vault-install.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 curl -fsSL "https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_linux_amd64.zip" -o "$tmp/vault.zip"
 unzip -o "$tmp/vault.zip" -d "$tmp"
