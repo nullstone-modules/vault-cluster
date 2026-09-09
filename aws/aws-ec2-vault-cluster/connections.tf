@@ -18,6 +18,7 @@ locals {
   vpc_cidr = data.ns_connection.network.outputs.vpc_cidr
 
   snapshot_bucket_arn  = data.ns_connection.snapshots_bucket.outputs.db_arn
+  snapshot_bucket_name = trimprefix(local.snapshot_bucket_arn, "arn:aws:s3:::")
   snapshot_kms_key_arn = try(data.ns_connection.snapshots_bucket.outputs.kms_key_arn, "")
 
   unseal_kms_key_arn = data.ns_connection.unseal_key.outputs.kms_key_arn
@@ -26,4 +27,7 @@ locals {
   vault_cluster_port = 8201
   vault_health_port  = 8210
   snapshot_prefix    = "vault-snapshots"
+
+  vault_cluster_tag_key   = "vault-cluster"
+  vault_cluster_tag_value = local.resource_name
 }

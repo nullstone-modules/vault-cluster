@@ -1,0 +1,13 @@
+[Unit]
+Description=Vault node configure
+Requires=cloud-final.service
+After=cloud-final.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/vault-node-configure
+
+[Install]
+WantedBy=multi-user.target

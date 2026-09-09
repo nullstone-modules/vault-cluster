@@ -47,6 +47,7 @@ data "aws_iam_policy_document" "this" {
         "kms:Encrypt",
         "kms:Decrypt",
         "kms:DescribeKey",
+        "kms:GenerateDataKey",
       ]
       resources = [statement.value]
     }

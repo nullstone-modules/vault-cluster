@@ -56,12 +56,31 @@ resource "aws_security_group_rule" "nodes_health_from_nlb" {
 }
 
 resource "aws_security_group_rule" "nodes_raft" {
-  security_group_id        = aws_security_group.nodes.id
-  type                     = "ingress"
-  protocol                 = "tcp"
-  from_port                = local.vault_cluster_port
-  to_port                  = local.vault_cluster_port
-  source_security_group_id = aws_security_group.nodes.id
+  security_group_id = aws_security_group.nodes.id
+  type              = "ingress"
+  protocol          = "tcp"
+  from_port         = local.vault_cluster_port
+  to_port           = local.vault_cluster_port
+  self              = true
+}
+
+# Raft auto-join calls the leader API port before moving to the cluster port.
+resource "aws_security_group_rule" "nodes_api_from_nodes" {
+  security_group_id = aws_security_group.nodes.id
+  type              = "ingress"
+  protocol          = "tcp"
+  from_port         = local.vault_api_port
+  to_port           = local.vault_api_port
+  self              = true
+}
+
+resource "aws_security_group_rule" "nodes_api_egress" {
+  security_group_id = aws_security_group.nodes.id
+  type              = "egress"
+  protocol          = "tcp"
+  from_port         = local.vault_api_port
+  to_port           = local.vault_api_port
+  self              = true
 }
 
 resource "aws_security_group_rule" "nodes_https" {
@@ -74,10 +93,10 @@ resource "aws_security_group_rule" "nodes_https" {
 }
 
 resource "aws_security_group_rule" "nodes_raft_egress" {
-  security_group_id        = aws_security_group.nodes.id
-  type                     = "egress"
-  protocol                 = "tcp"
-  from_port                = local.vault_cluster_port
-  to_port                  = local.vault_cluster_port
-  source_security_group_id = aws_security_group.nodes.id
+  security_group_id = aws_security_group.nodes.id
+  type              = "egress"
+  protocol          = "tcp"
+  from_port         = local.vault_cluster_port
+  to_port           = local.vault_cluster_port
+  self              = true
 }

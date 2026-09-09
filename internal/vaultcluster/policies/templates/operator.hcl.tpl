@@ -83,6 +83,10 @@ path "sys/storage/raft/configuration" {
   capabilities = ["read"]
 }
 
+path "sys/storage/raft/autopilot/state" {
+  capabilities = ["read"]
+}
+
 path "auth/token/lookup-self" {
   capabilities = ["read"]
 }

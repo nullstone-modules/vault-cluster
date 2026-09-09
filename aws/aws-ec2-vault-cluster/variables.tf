@@ -15,10 +15,19 @@ EOF
 
 variable "instance_type" {
   type        = string
-  default     = "t4g.micro"
+  default     = "t3.micro"
   description = <<EOF
 Instance Type that dictates CPU, Memory, network bandwidth, and file storage type and bandwidth.
 See https://aws.amazon.com/ec2/instance-types/ for EC2 instance types.
+EOF
+}
+
+variable "ami" {
+  type        = string
+  default     = ""
+  description = <<EOF
+AMI ID for Vault nodes. Leave empty to use the latest account AMI tagged `Name=nullstone-vault` (x86_64, baked by vault-node/vault.pkr.hcl).
+The image must contain Vault CE, vault-utils, and amazon-ssm-agent.
 EOF
 }
 

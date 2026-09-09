@@ -9,7 +9,7 @@ Applications share one Vault. They do not see each other's secrets. Isolation is
 | Target | Role | Status |
 |---|---|---|
 | `local/` | Docker Compose | Implemented |
-| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | Connections, IAM, SM, security groups. `bootstrap aws`, health on 8210, S3 snapshots. ASG/NLB not built yet. |
+| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | Connections, IAM, SM, security groups, AMI, user-data, launch template. `bootstrap aws`, health on 8210, S3 snapshots. ASG/NLB not built yet. |
 | `gcp/` | GCP | Not implemented |
 | `azure/` | Azure | Not implemented |
 
@@ -44,10 +44,11 @@ Implemented:
 - Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
 - Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
 - `bootstrap aws` (KMS auto-unseal, Secrets Manager tokens), health on 8210, S3 snapshots
+- AWS AMI bake (Vault CE + vault-utils) and instance user-data (fail-closed bootstrap, health on 8210)
 
 Not implemented:
 
-- AWS ASG, NLB, AMI, and user-data
+- AWS ASG and NLB
 - GCP, Azure, Kubernetes
 - KMS auto-unseal proven on a running EC2 cluster
 - TLS, multi-node Raft, DR replication
@@ -84,7 +85,7 @@ vault-cluster/
 ├── internal/vaultcluster/ shared Vault library
 ├── internal/aws/         AWS adapters (secretsmanager, s3)
 ├── local/                Compose target, snapshots
-├── aws/aws-ec2-vault-cluster/   Nullstone module (IAM/SM/SG; vault-utils AWS; no ASG yet)
+├── aws/aws-ec2-vault-cluster/   Nullstone module (IAM/SM/SG/AMI/user-data/launch template; no ASG yet)
 ├── gcp/                  Nullstone Terraform module (not yet implemented)
 └── azure/                Nullstone Terraform module (not yet implemented)
 ```
@@ -322,7 +323,7 @@ Denials must be HTTP 403. A 404 is a different failure.
 
 ### AWS module (`aws/aws-ec2-vault-cluster/`)
 
-OpenTofu in this directory is connections, IAM, Secrets Manager, and security groups. `go test ./internal/aws/...` covers the SM KeyStore and S3 snapshot helpers. `go test ./internal/vaultcluster` covers Raft health and cron parse. There is no live-AWS test in CI.
+OpenTofu in this directory is connections, IAM, Secrets Manager, security groups, AMI lookup, and user-data. `go test ./internal/aws/...` covers the SM KeyStore and S3 snapshot helpers. `go test ./internal/vaultcluster` covers Raft health, leader check, and cron parse. There is no live-AWS test in CI.
 
 From `aws/aws-ec2-vault-cluster/`:
 
@@ -342,7 +343,22 @@ To plan against real connections:
    - `snapshots_bucket` → `datastore/aws/s3` (snapshot bucket)
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
-4. In the plan, expect an IAM role + instance profile, SSM attach, inline IAM policy, three Secrets Manager secrets (`init` / `provisioning` / `operator`), and two security groups (NLB + nodes) with the 8200/8201/8210 rules. No ASG, NLB, or launch template yet.
+4. In the plan, expect an IAM role + instance profile, SSM attach, inline IAM policy, three Secrets Manager secrets (`init` / `provisioning` / `operator`), two security groups (NLB + nodes) with the 8200/8201/8210 rules, a launch template (baked AMI + user-data), and no ASG or NLB yet.
+
+Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
+
+```bash
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o vault-node/vault-utils ./cmd/vault-utils
+cd vault-node
+packer init .
+packer build -var region="$AWS_REGION" vault.pkr.hcl
+```
+
+`.github/workflows/build-ami.yml` runs the same bake on demand or on a push to `main` that touches the image inputs, and copies the result to every region in the `AMI_REGIONS` repository variable. It assumes the `AWS_ROLE_ARN` secret through GitHub OIDC and bakes in `AWS_REGION` (default `us-east-1`).
+
+`vault-node/files/` holds the cloud-neutral image content: base `vault.hcl` and the systemd units. `vault-node/aws/vault-node-configure` is the only AWS-specific piece, and other clouds add a sibling directory. The bake installs Vault CE 2.0, `vault-utils`, and that content, then enables every unit.
+
+On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/cloud.hcl` and `/etc/vault.d/node.env`, and exits. Systemd ordering then starts Vault, bootstrap, health, and snapshots. User-data only writes `/etc/vault.d/vault-utils.env`. Override with `ami` when using a different architecture.
 
 ## Troubleshooting
 

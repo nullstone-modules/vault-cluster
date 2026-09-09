@@ -14,6 +14,9 @@ import (
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster"
 )
 
+// Well inside the 24h token period, so a run of failed renewals is survivable.
+const tokenRenewInterval = time.Hour
+
 func main() {
 	log.SetFlags(0)
 	if len(os.Args) < 2 {
@@ -71,10 +74,17 @@ func run(cmd string, args []string) error {
 }
 
 func runBootstrap(c *vaultcluster.Client, args []string) error {
-	if len(args) < 1 {
+	platform := ""
+	if len(args) > 0 {
+		platform = args[0]
+	}
+	if platform == "" {
+		platform = os.Getenv("VAULT_PLATFORM")
+	}
+	if platform == "" {
 		return fmt.Errorf("usage: vault-utils bootstrap local|aws|azure|gcp")
 	}
-	switch args[0] {
+	switch platform {
 	case "local":
 		shares, _ := strconv.Atoi(getenv("VAULT_INIT_KEY_SHARES", "5"))
 		threshold, _ := strconv.Atoi(getenv("VAULT_INIT_KEY_THRESHOLD", "3"))
@@ -97,9 +107,9 @@ func runBootstrap(c *vaultcluster.Client, args []string) error {
 			AutoUnseal: true,
 		})
 	case "azure", "gcp":
-		return fmt.Errorf("bootstrap %s is not implemented yet", args[0])
+		return fmt.Errorf("bootstrap %s is not implemented yet", platform)
 	default:
-		return fmt.Errorf("unknown platform %q (local, aws, azure, gcp)", args[0])
+		return fmt.Errorf("unknown platform %q (local, aws, azure, gcp)", platform)
 	}
 }
 
@@ -215,10 +225,23 @@ func runSnapshotSchedule(c *vaultcluster.Client, backupDir string) error {
 	if err := useOperatorToken(c); err != nil {
 		return err
 	}
+	go c.RenewToken(tokenRenewInterval, nil)
+	nodeID := os.Getenv("VAULT_RAFT_NODE_ID")
 	for {
 		wait := time.Until(sched.Next(time.Now()))
 		if wait > 0 {
 			time.Sleep(wait)
+		}
+		if nodeID != "" {
+			data, err := c.RaftAutopilot()
+			if err != nil {
+				log.Printf("snapshot skipped: %v", err)
+				continue
+			}
+			if !vaultcluster.NodeIsLeader(nodeID, data) {
+				log.Printf("snapshot skipped: not raft leader")
+				continue
+			}
 		}
 		file, err := takeSnapshot(c, backupDir)
 		if err != nil {
@@ -237,6 +260,7 @@ func runHealthServe(c *vaultcluster.Client) error {
 	if err := useOperatorToken(c); err != nil {
 		return err
 	}
+	go c.RenewToken(tokenRenewInterval, nil)
 	addr := getenv("VAULT_HEALTH_ADDR", ":8210")
 	log.Printf("health listening on %s", addr)
 	return c.ServeHealth(addr, nodeID)
