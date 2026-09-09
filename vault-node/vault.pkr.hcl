@@ -16,11 +16,18 @@ variable "vault_version" {
   default = "2.0.4"
 }
 
+# Regions the finished AMI is copied to. One bake, then copies, instead of a build per region.
+variable "ami_regions" {
+  type    = list(string)
+  default = []
+}
+
 source "amazon-ebs" "vault" {
   ami_name        = "nullstone-vault-{{timestamp}}"
   ami_description = "Vault node for self-hosting a vault cluster with nullstone vault-utils"
   instance_type   = "t3.micro"
   region          = var.region
+  ami_regions     = var.ami_regions
   ssh_username    = "ec2-user"
 
   source_ami_filter {

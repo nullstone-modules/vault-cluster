@@ -4,8 +4,8 @@ data "aws_ami" "vault" {
   owners      = ["self"]
 
   filter {
-    name   = "name"
-    values = ["nullstone-vault-*"]
+    name   = "tag:Name"
+    values = ["nullstone-vault"]
   }
 
   filter {

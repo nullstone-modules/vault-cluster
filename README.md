@@ -354,6 +354,8 @@ packer init .
 packer build -var region="$AWS_REGION" vault.pkr.hcl
 ```
 
+`.github/workflows/build-ami.yml` runs the same bake on demand or on a push to `main` that touches the image inputs, and copies the result to every region in the `AMI_REGIONS` repository variable. It assumes the `AWS_ROLE_ARN` secret through GitHub OIDC and bakes in `AWS_REGION` (default `us-east-1`).
+
 `vault-node/files/` holds the cloud-neutral image content: base `vault.hcl` and the systemd units. `vault-node/aws/vault-node-configure` is the only AWS-specific piece, and other clouds add a sibling directory. The bake installs Vault CE 2.0, `vault-utils`, and that content, then enables every unit.
 
 On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/cloud.hcl` and `/etc/vault.d/node.env`, and exits. Systemd ordering then starts Vault, bootstrap, health, and snapshots. User-data only writes `/etc/vault.d/vault-utils.env`. Override with `ami` when using a different architecture.
