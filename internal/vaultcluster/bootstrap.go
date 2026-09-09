@@ -17,8 +17,12 @@ type BootstrapOptions struct {
 
 const revokedRootMarker = "revoked-at-bootstrap"
 
+// On a first boot the KMS seal waits for instance credentials before Vault opens its
+// listener; about a minute was measured on a freshly created instance profile.
+const readyTimeout = 3 * time.Minute
+
 func (c *Client) RunBootstrap(store KeyStore, opts BootstrapOptions) error {
-	if err := c.WaitReady(60 * time.Second); err != nil {
+	if err := c.WaitReady(readyTimeout); err != nil {
 		return err
 	}
 

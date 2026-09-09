@@ -14,6 +14,9 @@ import (
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster"
 )
 
+// Well inside the 24h token period, so a run of failed renewals is survivable.
+const tokenRenewInterval = time.Hour
+
 func main() {
 	log.SetFlags(0)
 	if len(os.Args) < 2 {
@@ -222,6 +225,7 @@ func runSnapshotSchedule(c *vaultcluster.Client, backupDir string) error {
 	if err := useOperatorToken(c); err != nil {
 		return err
 	}
+	go c.RenewToken(tokenRenewInterval, nil)
 	nodeID := os.Getenv("VAULT_RAFT_NODE_ID")
 	for {
 		wait := time.Until(sched.Next(time.Now()))
@@ -256,6 +260,7 @@ func runHealthServe(c *vaultcluster.Client) error {
 	if err := useOperatorToken(c); err != nil {
 		return err
 	}
+	go c.RenewToken(tokenRenewInterval, nil)
 	addr := getenv("VAULT_HEALTH_ADDR", ":8210")
 	log.Printf("health listening on %s", addr)
 	return c.ServeHealth(addr, nodeID)
