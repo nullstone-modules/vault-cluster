@@ -9,7 +9,7 @@ Applications share one Vault. They do not see each other's secrets. Isolation is
 | Target | Role | Status |
 |---|---|---|
 | `local/` | Docker Compose | Implemented |
-| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | IAM, SM, SG, AMI, user-data, launch template, internal NLB, ASG. |
+| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | IAM, SM, SG, AMI, user-data, launch template, internal NLB (TLS), ASG. |
 | `gcp/` | GCP | Not implemented |
 | `azure/` | Azure | Not implemented |
 
@@ -44,12 +44,12 @@ Implemented:
 - Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
 - Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
 - `bootstrap aws` (KMS auto-unseal, Secrets Manager tokens), health on 8210, S3 snapshots
-- AWS AMI, user-data, internal NLB (8200, health 8210), ASG (`cluster_size`)
+- AWS AMI, user-data, internal NLB (TLS 8200, health 8210), `vault.internal`, ASG (`cluster_size`)
 
 Not implemented:
 
 - GCP, Azure, Kubernetes
-- TLS, DR replication
+- Vault listener TLS, DR replication
 
 Local unseal submits Shamir shares (5 shares, threshold 3) for laptop use. It is not AWS KMS, Cloud KMS, or Azure Key Vault auto-unseal.
 
@@ -341,7 +341,7 @@ To plan against real connections:
    - `snapshots_bucket` → `datastore/aws/s3` (snapshot bucket)
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
-4. In the plan, expect IAM, three Secrets Manager secrets, node and NLB security groups, a launch template, an internal NLB on 8200 (health 8210), and an ASG of `cluster_size`.
+4. In the plan, expect IAM, three Secrets Manager secrets, node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size`. Clients use `https://vault.internal:8200`. The NLB terminates TLS; Vault nodes still listen HTTP.
 
 Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
 
@@ -373,6 +373,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 ## Security
 
 - Host ports bind to `127.0.0.1` only
+- AWS NLB terminates TLS for `vault.internal`; Vault nodes listen HTTP on 8200
 - No Vault `-dev` mode
 - Root token revoked after bootstrap
 - Unseal keys, tokens, and `.env` are gitignored (mode 600). Never printed to logs

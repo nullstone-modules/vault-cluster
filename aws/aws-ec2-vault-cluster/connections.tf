@@ -17,6 +17,8 @@ locals {
   vpc_id             = data.ns_connection.network.outputs.vpc_id
   vpc_cidr           = data.ns_connection.network.outputs.vpc_cidr
   private_subnet_ids = data.ns_connection.network.outputs.private_subnet_ids
+  internal_zone_id   = data.ns_connection.network.outputs.internal_zone_id
+  vault_fqdn         = "vault.internal"
 
   snapshot_bucket_arn  = data.ns_connection.snapshots_bucket.outputs.db_arn
   snapshot_bucket_name = trimprefix(local.snapshot_bucket_arn, "arn:aws:s3:::")

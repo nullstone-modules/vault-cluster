@@ -28,6 +28,11 @@ output "nlb_dns_name" {
   description = "string ||| Internal NLB DNS name for the Vault API."
 }
 
+output "vault_fqdn" {
+  value       = trimsuffix(aws_route53_record.vault.fqdn, ".")
+  description = "string ||| Internal DNS name for the Vault API (vault.internal)."
+}
+
 output "autoscaling_group_name" {
   value       = aws_autoscaling_group.this.name
   description = "string ||| Auto Scaling Group name for Vault nodes."

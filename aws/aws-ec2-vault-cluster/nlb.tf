@@ -37,7 +37,9 @@ resource "aws_lb_target_group" "api" {
 resource "aws_lb_listener" "api" {
   load_balancer_arn = aws_lb.this.arn
   port              = local.vault_api_port
-  protocol          = "TCP"
+  protocol          = "TLS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-Res-2021-06"
+  certificate_arn   = module.cert.certificate_arn
 
   default_action {
     type             = "forward"
