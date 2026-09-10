@@ -23,6 +23,16 @@ output "nlb_security_group_id" {
   description = "string ||| Security group attached to the internal NLB."
 }
 
+output "nlb_dns_name" {
+  value       = aws_lb.this.dns_name
+  description = "string ||| Internal NLB DNS name for the Vault API."
+}
+
+output "autoscaling_group_name" {
+  value       = aws_autoscaling_group.this.name
+  description = "string ||| Auto Scaling Group name for Vault nodes."
+}
+
 output "operator_secret_arn" {
   value       = aws_secretsmanager_secret.platform["operator"].arn
   description = "string ||| Secrets Manager ARN for the operator token."

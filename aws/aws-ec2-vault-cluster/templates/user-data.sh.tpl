@@ -17,4 +17,5 @@ AWS_REGION=${aws_region}
 UNSEAL_KMS_KEY_ARN=${unseal_kms_key_arn}
 VAULT_CLUSTER_TAG_KEY=${vault_cluster_tag_key}
 VAULT_CLUSTER_TAG_VALUE=${vault_cluster_tag_value}
+VAULT_API_ADDR=${vault_api_addr}
 ENV

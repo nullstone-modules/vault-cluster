@@ -105,6 +105,7 @@ func runBootstrap(c *vaultcluster.Client, args []string) error {
 			Threshold:  threshold,
 			KeepRoot:   getenv("KEEP_ROOT", "false") == "true",
 			AutoUnseal: true,
+			ClaimInit:  awsClaimInit,
 		})
 	case "azure", "gcp":
 		return fmt.Errorf("bootstrap %s is not implemented yet", platform)
@@ -326,6 +327,14 @@ func awsKeyStore() (*secretsmanager.KeyStore, error) {
 		os.Getenv("VAULT_PROVISIONING_SECRET_ARN"),
 		os.Getenv("VAULT_OPERATOR_SECRET_ARN"),
 	)
+}
+
+func awsClaimInit() (bool, error) {
+	store, err := s3.New()
+	if err != nil {
+		return false, err
+	}
+	return s3.ClaimInit(store, os.Getenv("SNAPSHOT_BUCKET"), getenv("SNAPSHOT_PREFIX", "vault-snapshots"), os.Getenv("VAULT_RAFT_NODE_ID"))
 }
 
 func bootstrapDir() string {

@@ -9,7 +9,7 @@ Applications share one Vault. They do not see each other's secrets. Isolation is
 | Target | Role | Status |
 |---|---|---|
 | `local/` | Docker Compose | Implemented |
-| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | Connections, IAM, SM, security groups, AMI, user-data, launch template. `bootstrap aws`, health on 8210, S3 snapshots. ASG/NLB not built yet. |
+| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | IAM, SM, SG, AMI, user-data, launch template, internal NLB, ASG. |
 | `gcp/` | GCP | Not implemented |
 | `azure/` | Azure | Not implemented |
 
@@ -44,14 +44,12 @@ Implemented:
 - Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
 - Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
 - `bootstrap aws` (KMS auto-unseal, Secrets Manager tokens), health on 8210, S3 snapshots
-- AWS AMI bake (Vault CE + vault-utils) and instance user-data (fail-closed bootstrap, health on 8210)
+- AWS AMI, user-data, internal NLB (8200, health 8210), ASG (`cluster_size`)
 
 Not implemented:
 
-- AWS ASG and NLB
 - GCP, Azure, Kubernetes
-- KMS auto-unseal proven on a running EC2 cluster
-- TLS, multi-node Raft, DR replication
+- TLS, DR replication
 
 Local unseal submits Shamir shares (5 shares, threshold 3) for laptop use. It is not AWS KMS, Cloud KMS, or Azure Key Vault auto-unseal.
 
@@ -85,7 +83,7 @@ vault-cluster/
 ├── internal/vaultcluster/ shared Vault library
 ├── internal/aws/         AWS adapters (secretsmanager, s3)
 ├── local/                Compose target, snapshots
-├── aws/aws-ec2-vault-cluster/   Nullstone module (IAM/SM/SG/AMI/user-data/launch template; no ASG yet)
+├── aws/aws-ec2-vault-cluster/   Nullstone AWS module
 ├── gcp/                  Nullstone Terraform module (not yet implemented)
 └── azure/                Nullstone Terraform module (not yet implemented)
 ```
@@ -343,7 +341,7 @@ To plan against real connections:
    - `snapshots_bucket` → `datastore/aws/s3` (snapshot bucket)
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
-4. In the plan, expect an IAM role + instance profile, SSM attach, inline IAM policy, three Secrets Manager secrets (`init` / `provisioning` / `operator`), two security groups (NLB + nodes) with the 8200/8201/8210 rules, a launch template (baked AMI + user-data), and no ASG or NLB yet.
+4. In the plan, expect IAM, three Secrets Manager secrets, node and NLB security groups, a launch template, an internal NLB on 8200 (health 8210), and an ASG of `cluster_size`.
 
 Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
 

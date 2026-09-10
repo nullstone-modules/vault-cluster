@@ -13,6 +13,7 @@ type BootstrapOptions struct {
 	Threshold  int
 	KeepRoot   bool
 	AutoUnseal bool
+	ClaimInit  func() (bool, error)
 }
 
 const revokedRootMarker = "revoked-at-bootstrap"
@@ -21,21 +22,16 @@ const revokedRootMarker = "revoked-at-bootstrap"
 // listener; about a minute was measured on a freshly created instance profile.
 const readyTimeout = 3 * time.Minute
 
+const initWaitTimeout = 5 * time.Minute
+
 func (c *Client) RunBootstrap(store KeyStore, opts BootstrapOptions) error {
 	if err := c.WaitReady(readyTimeout); err != nil {
 		return err
 	}
 
-	st, err := c.API.Sys().SealStatus()
+	leader, err := c.ensureInitialized(store, opts)
 	if err != nil {
 		return err
-	}
-	if !st.Initialized {
-		if err := c.initVault(store, opts); err != nil {
-			return err
-		}
-	} else if _, err := store.LoadInit(); err != nil {
-		return fmt.Errorf("Vault is initialized but key material is missing: %w", err)
 	}
 
 	if opts.AutoUnseal {
@@ -44,6 +40,10 @@ func (c *Client) RunBootstrap(store KeyStore, opts BootstrapOptions) error {
 		}
 	} else if err := c.unseal(store, opts.Threshold); err != nil {
 		return err
+	}
+
+	if !leader {
+		return c.waitPeerBootstrap(store, initWaitTimeout)
 	}
 
 	if tok, err := store.LoadToken("provisioning"); err == nil {
@@ -95,6 +95,101 @@ func (c *Client) RunBootstrap(store KeyStore, opts BootstrapOptions) error {
 		log.Printf("revoked the initial root token")
 	}
 	return nil
+}
+
+func (c *Client) ensureInitialized(store KeyStore, opts BootstrapOptions) (bool, error) {
+	st, err := c.API.Sys().SealStatus()
+	if err != nil {
+		return false, err
+	}
+	if _, err := store.LoadInit(); err == nil {
+		if !st.Initialized {
+			if err := c.waitVaultInitialized(initWaitTimeout); err != nil {
+				return false, err
+			}
+		}
+		if opts.ClaimInit != nil {
+			ok, err := opts.ClaimInit()
+			if err != nil {
+				return false, err
+			}
+			return ok, nil
+		}
+		return true, nil
+	}
+	if st.Initialized {
+		if err := c.waitInitMaterial(store, initWaitTimeout); err != nil {
+			return false, fmt.Errorf("Vault is initialized but key material is missing: %w", err)
+		}
+		return false, nil
+	}
+	claimed := true
+	if opts.ClaimInit != nil {
+		ok, err := opts.ClaimInit()
+		if err != nil {
+			return false, err
+		}
+		claimed = ok
+	}
+	if !claimed {
+		if err := c.waitInitMaterial(store, initWaitTimeout); err != nil {
+			if err := c.initVault(store, opts); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		if err := c.waitVaultInitialized(initWaitTimeout); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if err := c.initVault(store, opts); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (c *Client) waitInitMaterial(store KeyStore, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if _, err := store.LoadInit(); err == nil {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("timed out waiting for init material")
+}
+
+func (c *Client) waitVaultInitialized(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		st, err := c.API.Sys().SealStatus()
+		if err == nil && st != nil && st.Initialized {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("timed out waiting for Vault to initialize")
+}
+
+func (c *Client) waitPeerBootstrap(store KeyStore, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		tok, err := store.LoadToken("provisioning")
+		if err == nil {
+			c.API.SetToken(tok)
+			if _, err := c.API.Auth().Token().LookupSelf(); err == nil {
+				c.Cfg.Token = tok
+				if err := c.enableCredentialsIfNeeded(store); err != nil {
+					return err
+				}
+				log.Printf("platform already bootstrapped")
+				return nil
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("timed out waiting for the bootstrap leader")
 }
 
 func initRequest(opts BootstrapOptions) *api.InitRequest {

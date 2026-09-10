@@ -10,5 +10,6 @@ locals {
     snapshot_bucket_name    = local.snapshot_bucket_name
     snapshot_prefix         = local.snapshot_prefix
     backup_schedule         = var.backup_schedule
+    vault_api_addr          = "http://${aws_lb.this.dns_name}:${local.vault_api_port}"
   })
 }
