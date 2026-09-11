@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -13,6 +14,23 @@ type memObjects map[string][]byte
 func (m memObjects) Put(_ context.Context, bucket, key string, body []byte) error {
 	m[bucket+"/"+key] = append([]byte(nil), body...)
 	return nil
+}
+
+func (m memObjects) PutIfAbsent(_ context.Context, bucket, key string, body []byte) (bool, error) {
+	id := bucket + "/" + key
+	if _, exists := m[id]; exists {
+		return false, nil
+	}
+	m[id] = append([]byte(nil), body...)
+	return true, nil
+}
+
+func (m memObjects) Get(_ context.Context, bucket, key string) ([]byte, error) {
+	b, ok := m[bucket+"/"+key]
+	if !ok {
+		return nil, errors.New("missing")
+	}
+	return append([]byte(nil), b...), nil
 }
 
 func (m memObjects) List(_ context.Context, bucket, prefix string) ([]string, error) {
@@ -76,6 +94,36 @@ func TestPutSnapshotRejectsEmpty(t *testing.T) {
 		t.Fatal("expected empty snapshot to fail")
 	}
 	if _, err := PutSnapshot(memObjects{}, "", "vault-snapshots", []byte("x")); err == nil {
+		t.Fatal("expected missing bucket to fail")
+	}
+}
+
+func TestClaimInitFirstWins(t *testing.T) {
+	store := memObjects{}
+	won, err := ClaimInit(store, "b", "vault-snapshots", "n1")
+	if err != nil || !won {
+		t.Fatalf("first claim: won=%v err=%v", won, err)
+	}
+	won, err = ClaimInit(store, "b", "vault-snapshots", "n2")
+	if err != nil || won {
+		t.Fatalf("second node should lose: won=%v err=%v", won, err)
+	}
+	won, err = ClaimInit(store, "b", "vault-snapshots", "n1")
+	if err != nil || !won {
+		t.Fatalf("claimer should resume: won=%v err=%v", won, err)
+	}
+}
+
+func TestClaimInitStealsEmpty(t *testing.T) {
+	store := memObjects{"b/vault-snapshots/.init-claim": []byte("")}
+	won, err := ClaimInit(store, "b", "vault-snapshots", "n1")
+	if err != nil || !won {
+		t.Fatalf("empty claim should be stealable: won=%v err=%v", won, err)
+	}
+}
+
+func TestClaimInitRequiresBucket(t *testing.T) {
+	if _, err := ClaimInit(memObjects{}, "", "vault-snapshots", "n1"); err == nil {
 		t.Fatal("expected missing bucket to fail")
 	}
 }
