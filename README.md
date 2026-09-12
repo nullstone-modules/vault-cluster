@@ -341,7 +341,7 @@ To plan against real connections:
    - `snapshots_bucket` → `datastore/aws/s3` (snapshot bucket)
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
-4. In the plan, expect IAM, three Secrets Manager secrets, node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use `https://vault.internal:8200`. The NLB terminates TLS; Vault nodes still listen HTTP.
+4. In the plan, expect IAM, three Secrets Manager secrets (`prevent_destroy`, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use `https://vault.internal:8200`. The NLB terminates TLS; Vault nodes still listen HTTP.
 
 Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
 
@@ -377,6 +377,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 - No Vault `-dev` mode
 - Root token revoked after bootstrap
 - Unseal keys, tokens, and `.env` are gitignored (mode 600). Never printed to logs
+- AWS platform secrets (`init`, `provisioning`, `operator`) have `prevent_destroy` and a 30-day recovery window
 - Audit values are HMAC'd. Raw secrets must not appear in the audit log
 - Provisioning cannot read tenant KV
 - Operator cannot read tenant KV
