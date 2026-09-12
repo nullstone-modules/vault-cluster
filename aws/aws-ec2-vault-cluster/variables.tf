@@ -40,3 +40,12 @@ Leave empty to disable scheduled snapshots.
 Use a schedule that avoids this environment's peak traffic.
 EOF
 }
+
+variable "protect_platform_secrets" {
+  type        = bool
+  default     = true
+  description = <<EOF
+Prevent destroy of the init, provisioning, and operator Secrets Manager secrets.
+Leave enabled for normal use. Set to false before destroying this workspace so the stack can be deleted.
+EOF
+}
