@@ -10,6 +10,6 @@ resource "aws_secretsmanager_secret" "platform" {
   tags                    = local.tags
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = var.protect_platform_secrets
   }
 }
