@@ -57,16 +57,17 @@ func TestObjectKey(t *testing.T) {
 
 func TestListSnapshots(t *testing.T) {
 	store := memObjects{
-		"b/vault-snapshots/vault-1.snap":        []byte("a"),
-		"b/vault-snapshots/vault-1.snap.sha256": []byte("x"),
-		"b/other/vault-2.snap":                  []byte("c"),
+		"b/vault-snapshots/vault-20260101T000000Z.snap": []byte("old"),
+		"b/vault-snapshots/vault-20260102T000000Z.snap": []byte("new"),
+		"b/vault-snapshots/vault-1.snap.sha256":         []byte("x"),
+		"b/other/vault-2.snap":                          []byte("c"),
 	}
 	got, err := ListSnapshots(store, "b", "vault-snapshots")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0] != "s3://b/vault-snapshots/vault-1.snap" {
-		t.Fatalf("list %v", got)
+	if len(got) != 2 || got[0] != "s3://b/vault-snapshots/vault-20260102T000000Z.snap" {
+		t.Fatalf("list newest first: %v", got)
 	}
 }
 
@@ -125,5 +126,47 @@ func TestClaimInitStealsEmpty(t *testing.T) {
 func TestClaimInitRequiresBucket(t *testing.T) {
 	if _, err := ClaimInit(memObjects{}, "", "vault-snapshots", "n1"); err == nil {
 		t.Fatal("expected missing bucket to fail")
+	}
+}
+
+func TestParseObjectURI(t *testing.T) {
+	bucket, key, err := ParseObjectURI("s3://b/vault-snapshots/vault-1.snap")
+	if err != nil || bucket != "b" || key != "vault-snapshots/vault-1.snap" {
+		t.Fatalf("got %q %q %v", bucket, key, err)
+	}
+	if _, _, err := ParseObjectURI("s3://b/vault-snapshots/vault-1.snap.sha256"); err == nil {
+		t.Fatal("checksum object is not a snapshot uri")
+	}
+	if _, _, err := ParseObjectURI("/tmp/vault.snap"); err == nil {
+		t.Fatal("local path is not an s3 uri")
+	}
+}
+
+func TestGetSnapshotVerifiesChecksum(t *testing.T) {
+	sum := sha256.Sum256([]byte("snap"))
+	store := memObjects{
+		"b/vault-snapshots/vault-1.snap":        []byte("snap"),
+		"b/vault-snapshots/vault-1.snap.sha256": []byte(hex.EncodeToString(sum[:]) + "\n"),
+	}
+	got, err := GetSnapshot(store, "s3://b/vault-snapshots/vault-1.snap")
+	if err != nil || string(got) != "snap" {
+		t.Fatalf("got %q err=%v", got, err)
+	}
+}
+
+func TestGetSnapshotRejectsBadChecksum(t *testing.T) {
+	store := memObjects{
+		"b/vault-snapshots/vault-1.snap":        []byte("snap"),
+		"b/vault-snapshots/vault-1.snap.sha256": []byte("deadbeef\n"),
+	}
+	if _, err := GetSnapshot(store, "s3://b/vault-snapshots/vault-1.snap"); err == nil {
+		t.Fatal("expected checksum mismatch")
+	}
+}
+
+func TestGetSnapshotRequiresChecksum(t *testing.T) {
+	store := memObjects{"b/vault-snapshots/vault-1.snap": []byte("snap")}
+	if _, err := GetSnapshot(store, "s3://b/vault-snapshots/vault-1.snap"); err == nil {
+		t.Fatal("expected missing checksum to fail")
 	}
 }

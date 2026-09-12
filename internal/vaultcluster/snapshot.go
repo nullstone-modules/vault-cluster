@@ -99,6 +99,13 @@ func (c *Client) SnapshotRestore(file string) error {
 	if err != nil {
 		return err
 	}
+	return c.SnapshotRestoreData(b)
+}
+
+func (c *Client) SnapshotRestoreData(b []byte) error {
+	if len(b) == 0 {
+		return fmt.Errorf("snapshot is empty; refusing to restore")
+	}
 	req := c.API.NewRequest("POST", "/v1/sys/storage/raft/snapshot-force")
 	req.BodyBytes = b
 	resp, err := c.API.RawRequest(req)

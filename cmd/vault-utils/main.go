@@ -37,8 +37,8 @@ Commands:
   tenants destroy <id> --yes [--purge-secrets]
   snapshot take                     Write a Raft snapshot
   snapshot list
-  snapshot verify <file>
-  snapshot restore <file> --yes
+  snapshot verify <file|s3-uri>
+  snapshot restore <file|s3-uri> --yes
   snapshot schedule                 Cron loop (BACKUP_SCHEDULE; empty disables)
   health                            Print seal status
   health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
@@ -157,7 +157,7 @@ func runTenants(c *vaultcluster.Client, args []string) error {
 
 func runSnapshot(c *vaultcluster.Client, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: vault-utils snapshot take | list | verify <file> | restore <file> --yes | schedule")
+		return fmt.Errorf("usage: vault-utils snapshot take | list | verify <file|s3-uri> | restore <file|s3-uri> --yes | schedule")
 	}
 	backupDir := filepath.Join(bootstrapDir(), "backups")
 	switch args[0] {
@@ -187,25 +187,29 @@ func runSnapshot(c *vaultcluster.Client, args []string) error {
 		return nil
 	case "verify":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: vault-utils snapshot verify <file>")
+			return fmt.Errorf("usage: vault-utils snapshot verify <file|s3-uri>")
 		}
-		if err := vaultcluster.SnapshotVerify(args[1]); err != nil {
+		if err := verifySnapshot(args[1]); err != nil {
 			return err
 		}
 		log.Printf("checksum OK: %s", args[1])
 		return nil
 	case "restore":
 		if len(args) < 3 || args[2] != "--yes" {
-			return fmt.Errorf("restore replaces the entire cluster; re-run with: vault-utils snapshot restore <file> --yes")
+			return fmt.Errorf("restore replaces the entire cluster; re-run with: vault-utils snapshot restore <file|s3-uri> --yes")
 		}
 		if c.Cfg.Token == "" {
 			return fmt.Errorf("restore requires VAULT_TOKEN with sys/storage/raft/snapshot-force (break-glass root); the operator token cannot restore")
 		}
-		if err := c.SnapshotRestore(args[1]); err != nil {
+		if err := restoreSnapshot(c, args[1]); err != nil {
 			return err
 		}
 		log.Printf("restore submitted; Vault will seal")
-		log.Printf("unseal with the key shares that were current when this snapshot was taken")
+		if os.Getenv("VAULT_PLATFORM") == "aws" {
+			log.Printf("KMS auto-unseal should bring the node back")
+		} else {
+			log.Printf("unseal with the key shares that were current when this snapshot was taken")
+		}
 		return nil
 	case "schedule":
 		return runSnapshotSchedule(c, backupDir)
@@ -291,6 +295,33 @@ func listSnapshots(backupDir string) ([]string, error) {
 		return s3.ListSnapshots(store, bucket, getenv("SNAPSHOT_PREFIX", "vault-snapshots"))
 	}
 	return vaultcluster.SnapshotList(backupDir)
+}
+
+func verifySnapshot(ref string) error {
+	if strings.HasPrefix(ref, "s3://") {
+		store, err := s3.New()
+		if err != nil {
+			return err
+		}
+		_, err = s3.GetSnapshot(store, ref)
+		return err
+	}
+	return vaultcluster.SnapshotVerify(ref)
+}
+
+func restoreSnapshot(c *vaultcluster.Client, ref string) error {
+	if strings.HasPrefix(ref, "s3://") {
+		store, err := s3.New()
+		if err != nil {
+			return err
+		}
+		b, err := s3.GetSnapshot(store, ref)
+		if err != nil {
+			return err
+		}
+		return c.SnapshotRestoreData(b)
+	}
+	return c.SnapshotRestore(ref)
 }
 
 func useOperatorToken(c *vaultcluster.Client) error {

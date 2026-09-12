@@ -43,7 +43,7 @@ Implemented:
 - File audit on a volume separate from Raft
 - Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
 - Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
-- `bootstrap aws` (KMS auto-unseal, Secrets Manager tokens), health on 8210, S3 snapshots
+- `bootstrap aws` (KMS auto-unseal, Secrets Manager tokens), health on 8210, S3 snapshots and S3 restore
 - AWS AMI, user-data, internal NLB (TLS 8200, health 8210), `vault.internal`, ASG (`cluster_size`), rolling instance refresh on launch-template change
 
 Not implemented:
@@ -278,6 +278,16 @@ go test ./internal/vaultcluster -run TestIsolationMatrix
 ```
 
 Expected: `tenant-a` exists, `tenant-drill` does not, isolation suite passes.
+
+### AWS restore (destructive)
+
+On an AWS node, `snapshot take` and `snapshot list` use the connected S3 bucket. Restore reads an `s3://` URI, checks the SHA-256 object, then force-restores. Needs a token with `sys/storage/raft/snapshot-force`. The operator token cannot restore. After restore, Vault seals; KMS auto-unseal brings the node back.
+
+```bash
+vault-utils snapshot list
+vault-utils snapshot verify s3://<bucket>/vault-snapshots/vault-<stamp>.snap
+vault-utils snapshot restore s3://<bucket>/vault-snapshots/vault-<stamp>.snap --yes
+```
 
 ### If unseal keys are lost
 
