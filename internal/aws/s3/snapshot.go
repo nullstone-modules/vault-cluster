@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -162,5 +163,45 @@ func ListSnapshots(store ObjectStore, bucket, prefix string) ([]string, error) {
 	if bucket == "" {
 		return nil, fmt.Errorf("SNAPSHOT_BUCKET is not set")
 	}
-	return store.List(context.Background(), bucket, normalizePrefix(prefix)+"/")
+	keys, err := store.List(context.Background(), bucket, normalizePrefix(prefix)+"/")
+	if err != nil {
+		return nil, err
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+	return keys, nil
+}
+
+func ParseObjectURI(uri string) (bucket, key string, err error) {
+	rest, ok := strings.CutPrefix(uri, "s3://")
+	if !ok {
+		return "", "", fmt.Errorf("not an s3 uri: %s", uri)
+	}
+	bucket, key, ok = strings.Cut(rest, "/")
+	if !ok || bucket == "" || key == "" || !strings.HasSuffix(key, ".snap") {
+		return "", "", fmt.Errorf("invalid snapshot uri %q", uri)
+	}
+	return bucket, key, nil
+}
+
+func GetSnapshot(store ObjectStore, uri string) ([]byte, error) {
+	bucket, key, err := ParseObjectURI(uri)
+	if err != nil {
+		return nil, err
+	}
+	data, err := store.Get(context.Background(), bucket, key)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, fmt.Errorf("snapshot is empty; refusing to restore %s", uri)
+	}
+	want, err := store.Get(context.Background(), bucket, key+".sha256")
+	if err != nil {
+		return nil, fmt.Errorf("no checksum beside %s; integrity cannot be established", uri)
+	}
+	sum := sha256.Sum256(data)
+	if hex.EncodeToString(sum[:]) != strings.TrimSpace(string(want)) {
+		return nil, fmt.Errorf("checksum mismatch for %s; this snapshot is corrupt and must not be restored", uri)
+	}
+	return data, nil
 }
