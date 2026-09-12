@@ -1,0 +1,61 @@
+# Bake the Vault node AMI once and copy it to every region in AMI_REGIONS.
+#
+# Repository configuration:
+#   secret  AWS_ROLE_ARN   IAM role assumed through GitHub OIDC; Packer's EC2 policy plus ec2:CopyImage
+#   var     AWS_REGION     region the bake runs in (default us-east-1)
+#   var     AMI_REGIONS    comma-separated regions to copy the AMI to (optional)
+name: build-ami
+
+on:
+  workflow_dispatch:
+    inputs:
+      vault_version:
+        description: Vault CE version to install
+        default: "2.0.4"
+  push:
+    branches: [main]
+    paths:
+      - vault-node/**
+      - cmd/**
+      - internal/**
+      - go.mod
+      - go.sum
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency: build-ami
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - name: Build vault-utils
+        run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o vault-node/vault-utils ./cmd/vault-utils
+
+      - uses: hashicorp/setup-packer@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Bake
+        working-directory: vault-node
+        env:
+          AMI_REGIONS: ${{ vars.AMI_REGIONS }}
+          VAULT_VERSION: ${{ inputs.vault_version || '2.0.4' }}
+        run: |
+          regions=$(printf '%s\n' "$AMI_REGIONS" | jq -Rc 'split(",") | map(select(length > 0))')
+          packer init .
+          packer validate -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var "ami_regions=$regions" vault.pkr.hcl
+          packer build -color=false -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var "ami_regions=$regions" vault.pkr.hcl

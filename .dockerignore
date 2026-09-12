@@ -1,0 +1,13 @@
+.git
+**/.terraform
+**/.bootstrap
+local/.env
+*.md
+docs
+adrs
+runbooks
+examples
+aws
+gcp
+azure
+.github

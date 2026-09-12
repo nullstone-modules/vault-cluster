@@ -1,0 +1,60 @@
+name: vault-cluster
+
+services:
+  vault:
+    image: hashicorp/vault:2.0@sha256:5be49781ecf78bfe775c5309c6a4d9f4e9e040b6c885c99eb2b12fb69855e1a2
+    restart: unless-stopped
+    command: ["vault", "server", "-config=/vault/config/config.hcl"]
+    cap_add:
+      - IPC_LOCK
+    environment:
+      SKIP_CHOWN: "true"
+      SKIP_SETCAP: "true"
+    ports:
+      # Loopback only. Binding 0.0.0.0 would expose an unsealed plaintext Vault
+      # to the LAN.
+      - "127.0.0.1:${VAULT_HOST_PORT:-8200}:8200"
+    volumes:
+      - ./vault/config.hcl:/vault/config/config.hcl:ro
+      - vault-data:/vault/file
+      - vault-audit:/vault/logs
+    healthcheck:
+      # Sealed and uninitialized still count as healthy so the one-shot
+      # bootstrap can start and perform init/unseal.
+      test: >-
+        wget --quiet --tries=1 --spider
+        'http://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedcode=200&uninitcode=200'
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    networks:
+      - vault-cluster
+
+  bootstrap:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: "no"
+    user: "0:0"
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      BOOTSTRAP_DIR: /bootstrap
+      AUDIT_LOG_PATH: /vault/logs/audit.log
+      VAULT_INIT_KEY_SHARES: "${VAULT_INIT_KEY_SHARES:-5}"
+      VAULT_INIT_KEY_THRESHOLD: "${VAULT_INIT_KEY_THRESHOLD:-3}"
+    volumes:
+      - "${BOOTSTRAP_HOST_DIR:-./.bootstrap}:/bootstrap"
+    command: ["bootstrap", "local"]
+    networks:
+      - vault-cluster
+
+volumes:
+  vault-data:
+  vault-audit:
+
+networks:
+  vault-cluster:
