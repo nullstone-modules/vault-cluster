@@ -1,4 +1,4 @@
-# Local operator: health and config read. Not a tenant secret reader. No restore.
+# Local operator: health and config read. Can start generate-root (recovery keys still required). Not a tenant secret reader. No restore.
 path "sys/health" {
   capabilities = ["read", "sudo"]
 }
@@ -73,6 +73,14 @@ path "sys/leases/revoke" {
 
 path "sys/leases/revoke-prefix/*" {
   capabilities = ["update", "sudo"]
+}
+
+path "sys/generate-root" {
+  capabilities = ["create", "update", "read", "delete", "sudo"]
+}
+
+path "sys/generate-root/*" {
+  capabilities = ["create", "update", "read", "delete", "sudo"]
 }
 
 path "sys/storage/raft/snapshot" {

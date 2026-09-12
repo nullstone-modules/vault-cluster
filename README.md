@@ -201,7 +201,7 @@ Cross-tenant, wildcard, and traversal reads return HTTP 403. That is the isolati
 | Root | Bootstrap only. Revoked when setup finishes. |
 | Provisioning | Create and offboard tenants. Cannot read tenant secrets. |
 | Tenant AppRole | One reader and one writer per tenant. |
-| Operator | Health, mounts, snapshots. Not a tenant secret reader. |
+| Operator | Health, mounts, snapshots. Can start generate-root (recovery keys still required). Not a tenant secret reader. Cannot restore. |
 
 ## Health
 
@@ -281,7 +281,7 @@ Expected: `tenant-a` exists, `tenant-drill` does not, isolation suite passes.
 
 ### AWS restore (destructive)
 
-On an AWS node, `snapshot take` and `snapshot list` use the connected S3 bucket. Restore reads an `s3://` URI, checks the SHA-256 object, then force-restores. Needs a token with `sys/storage/raft/snapshot-force`. The operator token cannot restore. After restore, Vault seals; KMS auto-unseal brings the node back.
+On an AWS node, `snapshot take` and `snapshot list` use the connected S3 bucket. Restore reads an `s3://` URI, checks the SHA-256 object, then force-restores. Needs a token with `sys/storage/raft/snapshot-force`. The operator token cannot restore; mint a break-glass root with that token and the recovery keys first (see [Break-glass](#break-glass)). After restore, Vault seals; KMS auto-unseal brings the node back.
 
 ```bash
 vault-utils snapshot list
@@ -295,25 +295,28 @@ The Raft volume cannot be unsealed. Data is gone. That is Shamir working. Restor
 
 ## Break-glass
 
-Use only when no routine identity can do the job (read tenant data in an incident, purge secrets, repair audit). Two people. Record why first.
+Use only when no routine identity can do the job (read tenant data in an incident, purge secrets, repair audit, restore). Two people. Record why first.
+
+Vault 2.0 requires a token on `sys/generate-root`. Use the operator token. Recovery keys are still required. The operator token cannot restore; the new root can.
 
 ```bash
 export VAULT_ADDR=http://127.0.0.1:8200
-curl -s -X PUT "${VAULT_ADDR}/v1/sys/generate-root/attempt" | jq
+export VAULT_TOKEN=<operator>
+vault operator generate-root -init -format=json
 # each of 3 share holders:
-curl -s -X PUT --data '{"key":"<share>","nonce":"<nonce>"}' \
-  "${VAULT_ADDR}/v1/sys/generate-root/update" | jq
+vault operator generate-root -nonce=<nonce> <share>
 vault operator generate-root -decode=<encoded_token> -otp=<otp>
 # one recorded action, then:
-curl -s -X POST -H "X-Vault-Token: ${ROOT_TOKEN}" \
-  "${VAULT_ADDR}/v1/auth/token/revoke-self"
+vault token revoke -self
 ```
 
 Cancel an in-flight attempt:
 
 ```bash
-curl -s -X DELETE "${VAULT_ADDR}/v1/sys/generate-root/attempt"
+VAULT_TOKEN=<operator> vault operator generate-root -cancel
 ```
+
+Clusters that applied the operator policy before this change will still get 403. Do not leave `enable_unauthenticated_access` on. One-shot: add `enable_unauthenticated_access = ["generate-root"]` to `vault.hcl`, SIGHUP, generate-root, write the current operator policy with the new root, remove that line, SIGHUP, revoke the root.
 
 ## Testing
 
@@ -377,6 +380,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 | Initialized but `.bootstrap` missing | Restore `vault-init.json`, or destroy volumes and start empty |
 | Health 503 | Vault is sealed. Run `docker compose run --rm bootstrap` in `local/` |
 | Permission denied on tenant create | Use the provisioning token, not operator |
+| generate-root permission denied | Vault 2.0 needs the operator token. See [Break-glass](#break-glass). |
 | Permission denied on tenant secrets | Expected for provisioning |
 | Everything denied | Audit volume full or unwritable |
 
