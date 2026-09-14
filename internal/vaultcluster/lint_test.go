@@ -44,6 +44,14 @@ func TestRenderAndLintPlatformPolicies(t *testing.T) {
 		if err := LintOrError(name, hcl, cfg); err != nil {
 			t.Fatal(err)
 		}
+		if name == "operator" {
+			if !strings.Contains(hcl, `path "sys/generate-root"`) || !strings.Contains(hcl, `path "sys/generate-root/*"`) {
+				t.Fatal("operator must be able to start generate-root")
+			}
+			if !strings.Contains(hcl, `path "sys/storage/raft/snapshot-force"`) {
+				t.Fatal("operator must still deny snapshot-force")
+			}
+		}
 	}
 	for _, tmpl := range []string{"tenant-reader", "tenant-writer", "tenant-database"} {
 		hcl, err := RenderPolicy(tmpl, "tenant-a", cfg)
