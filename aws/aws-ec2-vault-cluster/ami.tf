@@ -1,7 +1,7 @@
 data "aws_ami" "vault" {
   count       = var.ami == "" ? 1 : 0
   most_recent = true
-  owners      = ["self"]
+  owners      = [var.ami_owner]
 
   filter {
     name   = "tag:Name"
