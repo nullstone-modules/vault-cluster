@@ -44,7 +44,7 @@ Implemented:
 - Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
 - Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
 - `bootstrap aws` (KMS auto-unseal, Secrets Manager tokens), health on 8210, S3 snapshots and S3 restore
-- AWS AMI, user-data, internal NLB (TLS 8200, health 8210), `vault.internal`, ASG (`cluster_size`), rolling instance refresh on launch-template change
+- AWS AMI, user-data, internal NLB (TLS 8200, health 8210), `vault.internal`, optional user-facing subdomain SNI, ASG (`cluster_size`), rolling instance refresh on launch-template change
 
 Not implemented:
 
@@ -353,8 +353,9 @@ To plan against real connections:
    - `network` → `network/aws/vpc` (same VPC pattern as Nullstone EC2 apps)
    - `snapshots_bucket` → `datastore/aws/s3` (snapshot bucket)
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
+   - optional `subdomain` → `subdomain/aws/route53` (user-facing TLS name on the NLB)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
-4. In the plan, expect IAM, three Secrets Manager secrets (`protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use `https://vault.internal:8200`. The NLB terminates TLS; Vault nodes still listen HTTP.
+4. In the plan, expect IAM, three Secrets Manager secrets (`protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A connected subdomain adds a user-facing cert (SNI) and alias. A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use `https://vault.internal:8200`. The NLB terminates TLS; Vault nodes still listen HTTP.
 
 Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
 
@@ -387,7 +388,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 ## Security
 
 - Host ports bind to `127.0.0.1` only
-- AWS NLB terminates TLS for `vault.internal`; Vault nodes listen HTTP on 8200
+- AWS NLB terminates TLS for `vault.internal` and an optional connected subdomain; Vault nodes listen HTTP on 8200
 - No Vault `-dev` mode
 - Root token revoked after bootstrap
 - Unseal keys, tokens, and `.env` are gitignored (mode 600). Never printed to logs

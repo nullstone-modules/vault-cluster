@@ -46,3 +46,9 @@ resource "aws_lb_listener" "api" {
     target_group_arn = aws_lb_target_group.api.arn
   }
 }
+
+resource "aws_lb_listener_certificate" "user" {
+  count           = local.user_certificate_arn != "" ? 1 : 0
+  listener_arn    = aws_lb_listener.api.arn
+  certificate_arn = local.user_certificate_arn
+}
