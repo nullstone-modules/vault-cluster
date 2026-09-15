@@ -33,6 +33,11 @@ output "vault_fqdn" {
   description = "string ||| Internal DNS name for the Vault API (vault.internal)."
 }
 
+output "user_fqdn" {
+  value       = local.subdomain_zone_id != "" ? trimsuffix(aws_route53_record.user[0].fqdn, ".") : ""
+  description = "string ||| User-facing DNS name when a subdomain is connected."
+}
+
 output "autoscaling_group_name" {
   value       = aws_autoscaling_group.this.name
   description = "string ||| Auto Scaling Group name for Vault nodes."

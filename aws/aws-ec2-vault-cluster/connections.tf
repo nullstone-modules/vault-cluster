@@ -13,12 +13,23 @@ data "ns_connection" "unseal_key" {
   contract = "datastore/aws/kms"
 }
 
+data "ns_connection" "subdomain" {
+  name     = "subdomain"
+  contract = "subdomain/aws/route53"
+  optional = true
+}
+
 locals {
   vpc_id             = data.ns_connection.network.outputs.vpc_id
   vpc_cidr           = data.ns_connection.network.outputs.vpc_cidr
   private_subnet_ids = data.ns_connection.network.outputs.private_subnet_ids
   internal_zone_id   = data.ns_connection.network.outputs.internal_zone_id
   vault_fqdn         = "vault.internal"
+
+  subdomain_name            = trimsuffix(try(data.ns_connection.subdomain.outputs.fqdn, ""), ".")
+  subdomain_zone_id         = try(data.ns_connection.subdomain.outputs.zone_id, "")
+  subdomain_certificate_arn = try(data.ns_connection.subdomain.outputs.certificate_arn, "")
+  subdomain_has_certificate = local.subdomain_certificate_arn != ""
 
   snapshot_bucket_arn  = data.ns_connection.snapshots_bucket.outputs.db_arn
   snapshot_bucket_name = trimprefix(local.snapshot_bucket_arn, "arn:aws:s3:::")
