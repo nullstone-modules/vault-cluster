@@ -3,7 +3,8 @@ set -euo pipefail
 
 install -m 0600 -o vault -g vault /dev/null /etc/vault.d/vault-utils.env
 cat >/etc/vault.d/vault-utils.env <<ENV
-VAULT_ADDR=http://127.0.0.1:8200
+VAULT_ADDR=https://127.0.0.1:8200
+VAULT_CACERT=/opt/vault/tls/ca.crt
 VAULT_HEALTH_ADDR=:8210
 VAULT_PLATFORM=aws
 VAULT_INIT_SECRET_ARN=${init_secret_arn}

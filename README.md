@@ -9,7 +9,7 @@ Applications share one Vault. They do not see each other's secrets. Isolation is
 | Target | Role | Status |
 |---|---|---|
 | `local/` | Docker Compose | Implemented |
-| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | IAM, SM, SG, AMI, user-data, launch template, internal NLB (TLS), ASG with rolling refresh. |
+| `aws/aws-ec2-vault-cluster/` | `aws-ec2-vault-cluster` | IAM, SM, SG, AMI, user-data, launch template, internal NLB (TLS), Vault listener TLS, ASG with rolling refresh. |
 | `gcp/` | GCP | Not implemented |
 | `azure/` | Azure | Not implemented |
 
@@ -44,12 +44,12 @@ Implemented:
 - Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
 - Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
 - `bootstrap aws` (KMS auto-unseal, Secrets Manager tokens), health on 8210, S3 snapshots and S3 restore
-- AWS AMI, user-data, internal NLB (TLS 8200, health 8210), `vault.internal`, ASG (`cluster_size`), rolling instance refresh on launch-template change
+- AWS AMI, user-data, internal NLB (TLS 8200, health 8210), `vault.internal`, ASG (`cluster_size`), rolling instance refresh on launch-template change, Vault listener TLS
 
 Not implemented:
 
 - GCP, Azure, Kubernetes
-- Vault listener TLS, DR replication
+- DR replication
 
 Local unseal submits Shamir shares (5 shares, threshold 3) for laptop use. It is not AWS KMS, Cloud KMS, or Azure Key Vault auto-unseal.
 
@@ -334,7 +334,7 @@ Denials must be HTTP 403. A 404 is a different failure.
 
 ### AWS module (`aws/aws-ec2-vault-cluster/`)
 
-OpenTofu in this directory is connections, IAM, Secrets Manager, security groups, AMI lookup, and user-data. `go test ./internal/aws/...` covers the SM KeyStore and S3 snapshot helpers. `go test ./internal/vaultcluster` covers Raft health, leader check, and cron parse. There is no live-AWS test in CI.
+OpenTofu in this directory is connections, IAM, Secrets Manager, security groups, AMI lookup, and user-data. `go test ./internal/aws/...` covers the SM KeyStore, S3 snapshot helpers, and node TLS CA. `go test ./internal/vaultcluster` covers Raft health, leader check, and cron parse. There is no live-AWS test in CI.
 
 From `aws/aws-ec2-vault-cluster/`:
 
@@ -354,7 +354,7 @@ To plan against real connections:
    - `snapshots_bucket` → `datastore/aws/s3` (snapshot bucket)
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
-4. In the plan, expect IAM, three Secrets Manager secrets (`protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use `https://vault.internal:8200`. The NLB terminates TLS; Vault nodes still listen HTTP.
+4. In the plan, expect IAM, three Secrets Manager secrets (`protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use `https://vault.internal:8200`. The NLB terminates client TLS and re-encrypts to Vault. Nodes listen TLS on 8200. Health stays HTTP on 8210. Rebake the AMI before applying; user-data HTTPS will not work on an HTTP listener image.
 
 Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
 
@@ -367,9 +367,9 @@ packer build -var region="$AWS_REGION" vault.pkr.hcl
 
 `.github/workflows/build-ami.yml` runs the same bake on demand or on a push to `main` that touches the image inputs, and copies the result to every region in the `AMI_REGIONS` repository variable. It assumes the `AWS_ROLE_ARN` secret through GitHub OIDC and bakes in `AWS_REGION` (default `us-east-1`).
 
-`vault-node/files/` holds the cloud-neutral image content: base `vault.hcl` and the systemd units. `vault-node/aws/vault-node-configure` is the only AWS-specific piece, and other clouds add a sibling directory. The bake installs Vault CE 2.0, `vault-utils`, and that content, then enables every unit.
+`vault-node/files/` holds the cloud-neutral image content: base `vault.hcl` (no listener; AWS configure writes TLS) and the systemd units. `vault-node/aws/vault-node-configure` is the only AWS-specific piece, and other clouds add a sibling directory. The bake installs Vault CE 2.0, `vault-utils`, and that content, then enables every unit.
 
-On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/cloud.hcl` and `/etc/vault.d/node.env`, and exits. Systemd ordering then starts Vault, bootstrap, health, and snapshots. User-data only writes `/etc/vault.d/vault-utils.env`. Override with `ami` when using a different architecture.
+On boot, `vault-configure.service` runs after cloud-init, writes node TLS files under `/opt/vault/tls`, `/etc/vault.d/cloud.hcl`, and `/etc/vault.d/node.env`, and exits. The cluster CA is created once in the snapshot bucket as `.cluster-ca`. Systemd ordering then starts Vault, bootstrap, health, and snapshots. User-data only writes `/etc/vault.d/vault-utils.env`. Override with `ami` when using a different architecture.
 
 ## Troubleshooting
 
@@ -387,7 +387,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 ## Security
 
 - Host ports bind to `127.0.0.1` only
-- AWS NLB terminates TLS for `vault.internal`; Vault nodes listen HTTP on 8200
+- AWS NLB terminates client TLS for `vault.internal` and re-encrypts to Vault. Nodes listen TLS on 8200. The cluster CA stays in the snapshot bucket; the CA key is not written to disk.
 - No Vault `-dev` mode
 - Root token revoked after bootstrap
 - Unseal keys, tokens, and `.env` are gitignored (mode 600). Never printed to logs
