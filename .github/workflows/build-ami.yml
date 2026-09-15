@@ -51,8 +51,14 @@ jobs:
         run: |
           echo "role_arn=$(nullstone outputs --field=role_arn)" >> "$GITHUB_OUTPUT"
           echo "aws_region=$(nullstone outputs --field=aws_region)" >> "$GITHUB_OUTPUT"
-          echo "ami_regions=$(nullstone outputs --field=ami_regions)" >> "$GITHUB_OUTPUT"
-          echo "ami_org_arns=$(nullstone outputs --field=ami_org_arns)" >> "$GITHUB_OUTPUT"
+          {
+            echo "ami_regions<<EOF"
+            nullstone outputs --field=ami_regions
+            echo "EOF"
+            echo "ami_org_arns<<EOF"
+            nullstone outputs --field=ami_org_arns
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v5
         with:
