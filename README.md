@@ -366,7 +366,12 @@ packer init .
 packer build -var region="$AWS_REGION" vault.pkr.hcl
 ```
 
-`.github/workflows/build-ami.yml` runs the same bake on demand or on a push to `main` that touches the image inputs, and copies the result to every region in the `AMI_REGIONS` repository variable. It assumes the `AWS_ROLE_ARN` secret through GitHub OIDC and bakes in `AWS_REGION` (default `us-east-1`).
+`.github/workflows/build-ami.yml` runs the same bake on demand or on a push to `main` that touches the image inputs. It assumes the Packer IAM role through GitHub OIDC. Role ARN, bake region, copy regions, and org launch ARNs come from a Nullstone `aws-packer-build` workspace (`nullstone outputs --field=...`), not from `AWS_ROLE_ARN` or AMI repo variables. See [nullstone-modules/aws-packer-build](https://github.com/nullstone-modules/aws-packer-build).
+
+Repo configuration for the bake:
+
+- secret `NULLSTONE_API_KEY`
+- variables `NULLSTONE_ORG`, `NULLSTONE_STACK`, `NULLSTONE_BLOCK`, `NULLSTONE_ENV` (the packer-build workspace)
 
 `vault-node/files/` holds the cloud-neutral image content: base `vault.hcl` and the systemd units. `vault-node/aws/vault-node-configure` is the only AWS-specific piece, and other clouds add a sibling directory. The bake installs Vault CE 2.0, `vault-utils`, and that content, then enables every unit.
 
