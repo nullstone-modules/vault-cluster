@@ -7,7 +7,10 @@ ami_regions = [
   "us-west-2",
 ]
 
-# Launch permission for this AWS Organization only. Does not make the AMI public.
+# Launch permission for this AWS Organization.
 ami_org_arns = [
   "arn:aws:organizations::031864064541:organization/o-4zofqm1ay9",
 ]
+
+# "all" makes the AMI publicly launchable. Copied to ami_regions as well.
+ami_groups = ["all"]

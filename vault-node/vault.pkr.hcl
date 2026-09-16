@@ -27,6 +27,11 @@ variable "ami_org_arns" {
   default = []
 }
 
+variable "ami_groups" {
+  type    = list(string)
+  default = []
+}
+
 source "amazon-ebs" "vault" {
   ami_name        = "nullstone-vault-{{timestamp}}"
   ami_description = "Vault node for self-hosting a vault cluster with nullstone vault-utils"
@@ -34,6 +39,7 @@ source "amazon-ebs" "vault" {
   region          = var.region
   ami_regions     = var.ami_regions
   ami_org_arns    = var.ami_org_arns
+  ami_groups      = var.ami_groups
   ssh_username    = "ec2-user"
 
   source_ami_filter {
