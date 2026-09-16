@@ -366,12 +366,11 @@ packer init .
 packer build -var region="$AWS_REGION" vault.pkr.hcl
 ```
 
-`.github/workflows/build-ami.yml` runs the same bake on demand or on a push to `main` that touches the image inputs. It assumes the Packer IAM role through GitHub OIDC. Role ARN and bake region come from a Nullstone `aws-packer-builder` workspace (`nullstone outputs --field=`). Copy regions stay on this bake (`AMI_REGIONS`). See [nullstone-modules/aws-packer-build](https://github.com/nullstone-modules/aws-packer-build).
+`.github/workflows/build-ami.yml` runs the same bake on demand or on a push to `main` that touches the image inputs. It assumes the Packer IAM role through GitHub OIDC. Role ARN and bake region come from the Nullstone `aws-packer-builder` workspace (`stack=internal`, `env=local`). Copy regions stay on this bake (`AMI_REGIONS`). See [nullstone-modules/aws-packer-builder-github](https://github.com/nullstone-modules/aws-packer-builder-github).
 
 Repo configuration for the bake:
 
 - secret `NULLSTONE_API_KEY`
-- variables `NULLSTONE_ORG`, `NULLSTONE_STACK`, `NULLSTONE_BLOCK`, `NULLSTONE_ENV` (defaults: `nullstone`, `internal`, `aws-packer-builder`, `local`)
 - optional `AMI_REGIONS` (comma-separated extra regions to copy the AMI into)
 - optional `AMI_ORG_ARNS` (comma-separated org launch ARNs, used when `vault.pkr.hcl` defines that variable)
 

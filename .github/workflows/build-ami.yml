@@ -1,19 +1,16 @@
 # Bake the Vault node AMI.
 #
-# Role and bake region come from a Nullstone aws-packer-builder workspace.
+# Role and bake region come from the Nullstone aws-packer-builder workspace
+# stack=internal env=local block=aws-packer-builder.
 # Copy regions stay on this bake (AMI_REGIONS), not on that module.
 #
 # Repository configuration:
 #   secret  NULLSTONE_API_KEY
-#   var     NULLSTONE_ORG    (default nullstone)
-#   var     NULLSTONE_STACK  (default internal)
-#   var     NULLSTONE_BLOCK  (default aws-packer-builder)
-#   var     NULLSTONE_ENV    (default local)
 #   var     AMI_REGIONS      comma-separated extra regions (optional)
 #   var     AMI_ORG_ARNS     comma-separated org ARNs (optional; used when vault.pkr.hcl defines ami_org_arns)
 #
 # Workspace outputs used: role_arn, aws_region
-# See https://github.com/nullstone-modules/aws-packer-build
+# See https://github.com/nullstone-modules/aws-packer-builder-github
 name: build-ami
 
 on:
@@ -41,11 +38,11 @@ jobs:
   bake:
     runs-on: ubuntu-latest
     env:
-      NULLSTONE_ORG: ${{ vars.NULLSTONE_ORG || 'nullstone' }}
+      NULLSTONE_ORG: nullstone
       NULLSTONE_API_KEY: ${{ secrets.NULLSTONE_API_KEY }}
-      NULLSTONE_STACK: ${{ vars.NULLSTONE_STACK || 'internal' }}
-      NULLSTONE_BLOCK: ${{ vars.NULLSTONE_BLOCK || 'aws-packer-builder' }}
-      NULLSTONE_ENV: ${{ vars.NULLSTONE_ENV || 'local' }}
+      NULLSTONE_STACK: internal
+      NULLSTONE_BLOCK: aws-packer-builder
+      NULLSTONE_ENV: local
     steps:
       - uses: actions/checkout@v4
 
