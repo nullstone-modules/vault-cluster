@@ -1,13 +1,18 @@
-# Bake the Vault node AMI. Settings come from a Nullstone aws-packer-build workspace.
+# Bake the Vault node AMI.
+#
+# Role and bake region come from a Nullstone aws-packer-builder workspace.
+# Copy regions stay on this bake (AMI_REGIONS), not on that module.
 #
 # Repository configuration:
 #   secret  NULLSTONE_API_KEY
-#   var     NULLSTONE_ORG
-#   var     NULLSTONE_STACK
-#   var     NULLSTONE_BLOCK
-#   var     NULLSTONE_ENV
+#   var     NULLSTONE_ORG    (default nullstone)
+#   var     NULLSTONE_STACK  (default internal)
+#   var     NULLSTONE_BLOCK  (default aws-packer-builder)
+#   var     NULLSTONE_ENV    (default local)
+#   var     AMI_REGIONS      comma-separated extra regions (optional)
+#   var     AMI_ORG_ARNS     comma-separated org ARNs (optional; used when vault.pkr.hcl defines ami_org_arns)
 #
-# That workspace outputs role_arn, aws_region, ami_regions, and ami_org_arns.
+# Workspace outputs used: role_arn, aws_region
 # See https://github.com/nullstone-modules/aws-packer-build
 name: build-ami
 
@@ -36,11 +41,11 @@ jobs:
   bake:
     runs-on: ubuntu-latest
     env:
-      NULLSTONE_ORG: ${{ vars.NULLSTONE_ORG }}
+      NULLSTONE_ORG: ${{ vars.NULLSTONE_ORG || 'nullstone' }}
       NULLSTONE_API_KEY: ${{ secrets.NULLSTONE_API_KEY }}
-      NULLSTONE_STACK: ${{ vars.NULLSTONE_STACK }}
-      NULLSTONE_BLOCK: ${{ vars.NULLSTONE_BLOCK }}
-      NULLSTONE_ENV: ${{ vars.NULLSTONE_ENV }}
+      NULLSTONE_STACK: ${{ vars.NULLSTONE_STACK || 'internal' }}
+      NULLSTONE_BLOCK: ${{ vars.NULLSTONE_BLOCK || 'aws-packer-builder' }}
+      NULLSTONE_ENV: ${{ vars.NULLSTONE_ENV || 'local' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,14 +56,6 @@ jobs:
         run: |
           echo "role_arn=$(nullstone outputs --field=role_arn)" >> "$GITHUB_OUTPUT"
           echo "aws_region=$(nullstone outputs --field=aws_region)" >> "$GITHUB_OUTPUT"
-          {
-            echo "ami_regions<<EOF"
-            nullstone outputs --field=ami_regions
-            echo "EOF"
-            echo "ami_org_arns<<EOF"
-            nullstone outputs --field=ami_org_arns
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v5
         with:
@@ -78,16 +75,16 @@ jobs:
         working-directory: vault-node
         env:
           AWS_REGION: ${{ steps.packer.outputs.aws_region }}
-          AMI_REGIONS: ${{ steps.packer.outputs.ami_regions }}
-          AMI_ORG_ARNS: ${{ steps.packer.outputs.ami_org_arns }}
+          AMI_REGIONS: ${{ vars.AMI_REGIONS }}
+          AMI_ORG_ARNS: ${{ vars.AMI_ORG_ARNS }}
           VAULT_VERSION: ${{ inputs.vault_version || '2.0.4' }}
         run: |
-          regions=${AMI_REGIONS:-[]}
-          orgs=${AMI_ORG_ARNS:-[]}
+          regions=$(printf '%s\n' "$AMI_REGIONS" | jq -Rc 'split(",") | map(select(length > 0))')
           extra=()
           if grep -q 'variable "ami_org_arns"' vault.pkr.hcl; then
-            extra+=(-var "ami_org_arns=${orgs}")
+            orgs=$(printf '%s\n' "$AMI_ORG_ARNS" | jq -Rc 'split(",") | map(select(length > 0))')
+            extra+=(-var "ami_org_arns=$orgs")
           fi
           packer init .
-          packer validate -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var "ami_regions=${regions}" "${extra[@]}" vault.pkr.hcl
-          packer build -color=false -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var "ami_regions=${regions}" "${extra[@]}" vault.pkr.hcl
+          packer validate -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var "ami_regions=$regions" "${extra[@]}" vault.pkr.hcl
+          packer build -color=false -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var "ami_regions=$regions" "${extra[@]}" vault.pkr.hcl
