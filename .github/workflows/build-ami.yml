@@ -2,12 +2,10 @@
 #
 # Role and bake region come from the Nullstone aws-packer-builder workspace
 # stack=internal env=local block=aws-packer-builder.
-# Copy regions stay on this bake (AMI_REGIONS), not on that module.
+# Copy regions and org launch ARNs are vault-node/ami.pkrvars.hcl.
 #
 # Repository configuration:
 #   secret  NULLSTONE_API_KEY
-#   var     AMI_REGIONS      comma-separated extra regions (optional)
-#   var     AMI_ORG_ARNS     comma-separated org ARNs (optional; used when vault.pkr.hcl defines ami_org_arns)
 #
 # Workspace outputs used: role_arn, aws_region
 # See https://github.com/nullstone-modules/aws-packer-builder-github
@@ -72,16 +70,8 @@ jobs:
         working-directory: vault-node
         env:
           AWS_REGION: ${{ steps.packer.outputs.aws_region }}
-          AMI_REGIONS: ${{ vars.AMI_REGIONS }}
-          AMI_ORG_ARNS: ${{ vars.AMI_ORG_ARNS }}
           VAULT_VERSION: ${{ inputs.vault_version || '2.0.4' }}
         run: |
-          regions=$(printf '%s\n' "$AMI_REGIONS" | jq -Rc 'split(",") | map(select(length > 0))')
-          extra=()
-          if grep -q 'variable "ami_org_arns"' vault.pkr.hcl; then
-            orgs=$(printf '%s\n' "$AMI_ORG_ARNS" | jq -Rc 'split(",") | map(select(length > 0))')
-            extra+=(-var "ami_org_arns=$orgs")
-          fi
           packer init .
-          packer validate -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var "ami_regions=$regions" "${extra[@]}" vault.pkr.hcl
-          packer build -color=false -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var "ami_regions=$regions" "${extra[@]}" vault.pkr.hcl
+          packer validate -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var-file=ami.pkrvars.hcl vault.pkr.hcl
+          packer build -color=false -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var-file=ami.pkrvars.hcl vault.pkr.hcl
