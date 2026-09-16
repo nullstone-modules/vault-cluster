@@ -1,9 +1,14 @@
-# Bake the Vault node AMI once and copy it to every region in AMI_REGIONS.
+# Bake the Vault node AMI.
+#
+# Role and bake region come from the Nullstone aws-packer-builder workspace
+# stack=internal env=local block=aws-packer-builder.
+# Copy regions and org launch ARNs are vault-node/ami.pkrvars.hcl.
 #
 # Repository configuration:
-#   secret  AWS_ROLE_ARN   IAM role assumed through GitHub OIDC; Packer's EC2 policy plus ec2:CopyImage
-#   var     AWS_REGION     region the bake runs in (default us-east-1)
-#   var     AMI_REGIONS    comma-separated regions to copy the AMI to (optional)
+#   secret  NULLSTONE_API_KEY
+#
+# Workspace outputs used: role_arn, aws_region
+# See https://github.com/nullstone-modules/aws-packer-builder-github
 name: build-ami
 
 on:
@@ -31,9 +36,21 @@ jobs:
   bake:
     runs-on: ubuntu-latest
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      NULLSTONE_ORG: nullstone
+      NULLSTONE_API_KEY: ${{ secrets.NULLSTONE_API_KEY }}
+      NULLSTONE_STACK: internal
+      NULLSTONE_BLOCK: aws-packer-builder
+      NULLSTONE_ENV: local
     steps:
       - uses: actions/checkout@v4
+
+      - uses: nullstone-io/setup-nullstone-action@v0
+
+      - name: Packer workspace outputs
+        id: packer
+        run: |
+          echo "role_arn=$(nullstone outputs --field=role_arn)" >> "$GITHUB_OUTPUT"
+          echo "aws_region=$(nullstone outputs --field=aws_region)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v5
         with:
@@ -46,16 +63,15 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ steps.packer.outputs.role_arn }}
+          aws-region: ${{ steps.packer.outputs.aws_region }}
 
       - name: Bake
         working-directory: vault-node
         env:
-          AMI_REGIONS: ${{ vars.AMI_REGIONS }}
+          AWS_REGION: ${{ steps.packer.outputs.aws_region }}
           VAULT_VERSION: ${{ inputs.vault_version || '2.0.4' }}
         run: |
-          regions=$(printf '%s\n' "$AMI_REGIONS" | jq -Rc 'split(",") | map(select(length > 0))')
           packer init .
-          packer validate -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var "ami_regions=$regions" vault.pkr.hcl
-          packer build -color=false -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var "ami_regions=$regions" vault.pkr.hcl
+          packer validate -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var-file=ami.pkrvars.hcl vault.pkr.hcl
+          packer build -color=false -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var-file=ami.pkrvars.hcl vault.pkr.hcl
