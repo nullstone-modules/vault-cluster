@@ -1,0 +1,18 @@
+[Unit]
+Description=Vault raft health
+# Ordered after bootstrap but not bound to it: a failed bootstrap attempt is retried by
+# its own unit and must not cancel this one. The endpoint stays non-200 until bootstrap completes.
+Requires=vault.service
+After=vault.service vault-bootstrap.service
+
+[Service]
+EnvironmentFile=/etc/vault.d/vault-utils.env
+EnvironmentFile=/etc/vault.d/node.env
+ExecStart=/usr/local/bin/vault-utils health serve
+Restart=always
+RestartSec=5
+User=vault
+Group=vault
+
+[Install]
+WantedBy=multi-user.target

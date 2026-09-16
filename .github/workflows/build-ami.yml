@@ -1,0 +1,77 @@
+# Bake the Vault node AMI.
+#
+# Role and bake region come from the Nullstone aws-packer-builder workspace
+# stack=internal env=local block=aws-packer-builder.
+# Copy regions and org launch ARNs are vault-node/ami.pkrvars.hcl.
+#
+# Repository configuration:
+#   secret  NULLSTONE_API_KEY
+#
+# Workspace outputs used: role_arn, aws_region
+# See https://github.com/nullstone-modules/aws-packer-builder-github
+name: build-ami
+
+on:
+  workflow_dispatch:
+    inputs:
+      vault_version:
+        description: Vault CE version to install
+        default: "2.0.4"
+  push:
+    branches: [main]
+    paths:
+      - vault-node/**
+      - cmd/**
+      - internal/**
+      - go.mod
+      - go.sum
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency: build-ami
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    env:
+      NULLSTONE_ORG: nullstone
+      NULLSTONE_API_KEY: ${{ secrets.NULLSTONE_API_KEY }}
+      NULLSTONE_STACK: internal
+      NULLSTONE_BLOCK: aws-packer-builder
+      NULLSTONE_ENV: local
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: nullstone-io/setup-nullstone-action@v0
+
+      - name: Packer workspace outputs
+        id: packer
+        run: |
+          echo "role_arn=$(nullstone outputs --field=role_arn)" >> "$GITHUB_OUTPUT"
+          echo "aws_region=$(nullstone outputs --field=aws_region)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - name: Build vault-utils
+        run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o vault-node/vault-utils ./cmd/vault-utils
+
+      - uses: hashicorp/setup-packer@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ steps.packer.outputs.role_arn }}
+          aws-region: ${{ steps.packer.outputs.aws_region }}
+
+      - name: Bake
+        working-directory: vault-node
+        env:
+          AWS_REGION: ${{ steps.packer.outputs.aws_region }}
+          VAULT_VERSION: ${{ inputs.vault_version || '2.0.4' }}
+        run: |
+          packer init .
+          packer validate -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var-file=ami.pkrvars.hcl vault.pkr.hcl
+          packer build -color=false -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var-file=ami.pkrvars.hcl vault.pkr.hcl
