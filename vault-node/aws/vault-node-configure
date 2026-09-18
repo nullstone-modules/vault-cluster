@@ -27,6 +27,9 @@ UNSEAL_KMS_KEY_ARN="$(env_value UNSEAL_KMS_KEY_ARN)"
 VAULT_CLUSTER_TAG_KEY="$(env_value VAULT_CLUSTER_TAG_KEY)"
 VAULT_CLUSTER_TAG_VALUE="$(env_value VAULT_CLUSTER_TAG_VALUE)"
 VAULT_API_ADDR="$(sed -n "s/^VAULT_API_ADDR=//p" "$ENV_FILE" | tail -n 1)"
+SNAPSHOT_BUCKET="$(env_value SNAPSHOT_BUCKET)"
+SNAPSHOT_PREFIX="$(sed -n "s/^SNAPSHOT_PREFIX=//p" "$ENV_FILE" | tail -n 1)"
+TLS_DIR=/opt/vault/tls
 
 imds_token() {
   curl -fsS -X PUT "http://169.254.169.254/latest/api/token" \
@@ -45,16 +48,34 @@ printf 'VAULT_RAFT_NODE_ID=%s\n' "$INSTANCE_ID" >"$NODE_ENV_FILE"
 chown vault:vault "$NODE_ENV_FILE"
 chmod 0640 "$NODE_ENV_FILE"
 
+export AWS_REGION SNAPSHOT_BUCKET
+export SNAPSHOT_PREFIX="${SNAPSHOT_PREFIX:-vault-snapshots}"
+export VAULT_TLS_DIR="$TLS_DIR"
+export VAULT_TLS_IP="$PRIVATE_IP"
+/usr/local/bin/vault-utils tls provision
+chown -R vault:vault "$TLS_DIR"
+chmod 0750 "$TLS_DIR"
+chmod 0640 "$TLS_DIR/ca.crt" "$TLS_DIR/tls.crt"
+chmod 0600 "$TLS_DIR/tls.key"
+
 cat >"$CLOUD_HCL" <<HCL
 cluster_name = "${VAULT_CLUSTER_TAG_VALUE}"
+
+listener "tcp" {
+  address         = "0.0.0.0:8200"
+  cluster_address = "0.0.0.0:8201"
+  tls_cert_file   = "${TLS_DIR}/tls.crt"
+  tls_key_file    = "${TLS_DIR}/tls.key"
+}
 
 storage "raft" {
   path    = "/opt/vault/data"
   node_id = "${INSTANCE_ID}"
 
   retry_join {
-    auto_join        = "provider=aws region=${AWS_REGION} tag_key=${VAULT_CLUSTER_TAG_KEY} tag_value=${VAULT_CLUSTER_TAG_VALUE} addr_type=private_v4"
-    auto_join_scheme = "http"
+    auto_join           = "provider=aws region=${AWS_REGION} tag_key=${VAULT_CLUSTER_TAG_KEY} tag_value=${VAULT_CLUSTER_TAG_VALUE} addr_type=private_v4"
+    auto_join_scheme    = "https"
+    leader_ca_cert_file = "${TLS_DIR}/ca.crt"
   }
 }
 
@@ -63,8 +84,8 @@ seal "awskms" {
   kms_key_id = "${UNSEAL_KMS_KEY_ARN}"
 }
 
-api_addr     = "${VAULT_API_ADDR:-http://${PRIVATE_IP}:8200}"
-cluster_addr = "http://${PRIVATE_IP}:8201"
+api_addr     = "${VAULT_API_ADDR:-https://${PRIVATE_IP}:8200}"
+cluster_addr = "https://${PRIVATE_IP}:8201"
 HCL
 chown vault:vault "$CLOUD_HCL"
 chmod 0640 "$CLOUD_HCL"
