@@ -32,15 +32,23 @@ variable "ami_groups" {
   default = []
 }
 
+variable "subnet_id" {
+  type        = string
+  default     = null
+  description = "Public subnet for the builder. GitHub bake sets this from the aws-packer-builder workspace."
+}
+
 source "amazon-ebs" "vault" {
-  ami_name        = "nullstone-vault-{{timestamp}}"
-  ami_description = "Vault node for self-hosting a vault cluster with nullstone vault-utils"
-  instance_type   = "t3.micro"
-  region          = var.region
-  ami_regions     = var.ami_regions
-  ami_org_arns    = var.ami_org_arns
-  ami_groups      = var.ami_groups
-  ssh_username    = "ec2-user"
+  ami_name                    = "nullstone-vault-{{timestamp}}"
+  ami_description             = "Vault node for self-hosting a vault cluster with nullstone vault-utils"
+  instance_type               = "t3.micro"
+  region                      = var.region
+  ami_regions                 = var.ami_regions
+  ami_org_arns                = var.ami_org_arns
+  ami_groups                  = var.ami_groups
+  ssh_username                = "ec2-user"
+  subnet_id                   = var.subnet_id
+  associate_public_ip_address = true
 
   source_ami_filter {
     filters = {

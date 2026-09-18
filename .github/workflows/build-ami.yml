@@ -1,13 +1,13 @@
 # Bake the Vault node AMI.
 #
-# Role and bake region come from the Nullstone aws-packer-builder workspace
-# stack=internal env=local block=aws-packer-builder.
+# Role, bake region, and public subnet come from the Nullstone aws-packer-builder
+# workspace stack=internal env=local block=aws-packer-builder.
 # Copy regions and org launch ARNs are vault-node/ami.pkrvars.hcl.
 #
 # Repository configuration:
 #   secret  NULLSTONE_API_KEY
 #
-# Workspace outputs used: role_arn, aws_region
+# Workspace outputs used: role_arn, aws_region, subnet_id
 # See https://github.com/nullstone-modules/aws-packer-builder-github
 name: build-ami
 
@@ -51,6 +51,7 @@ jobs:
         run: |
           echo "role_arn=$(nullstone outputs --field=role_arn)" >> "$GITHUB_OUTPUT"
           echo "aws_region=$(nullstone outputs --field=aws_region)" >> "$GITHUB_OUTPUT"
+          echo "subnet_id=$(nullstone outputs --field=subnet_id)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v5
         with:
@@ -70,8 +71,9 @@ jobs:
         working-directory: vault-node
         env:
           AWS_REGION: ${{ steps.packer.outputs.aws_region }}
+          SUBNET_ID: ${{ steps.packer.outputs.subnet_id }}
           VAULT_VERSION: ${{ inputs.vault_version || '2.0.4' }}
         run: |
           packer init .
-          packer validate -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var-file=ami.pkrvars.hcl vault.pkr.hcl
-          packer build -color=false -var region="$AWS_REGION" -var vault_version="$VAULT_VERSION" -var-file=ami.pkrvars.hcl vault.pkr.hcl
+          packer validate -var region="$AWS_REGION" -var subnet_id="$SUBNET_ID" -var vault_version="$VAULT_VERSION" -var-file=ami.pkrvars.hcl vault.pkr.hcl
+          packer build -color=false -var region="$AWS_REGION" -var subnet_id="$SUBNET_ID" -var vault_version="$VAULT_VERSION" -var-file=ami.pkrvars.hcl vault.pkr.hcl
