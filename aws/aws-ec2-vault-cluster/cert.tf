@@ -1,22 +1,3 @@
-module "cert" {
-  source  = "nullstone-modules/sslcert/aws"
-  version = "~> 0.3.0"
-  # ACM public certs cannot validate vault.internal in the VPC private hosted zone.
-  enabled = false
-
-  providers = {
-    aws        = aws
-    aws.domain = aws
-  }
-
-  domain = {
-    name    = local.vault_fqdn
-    zone_id = local.internal_zone_id
-  }
-
-  tags = local.tags
-}
-
 module "user_cert" {
   source  = "nullstone-modules/sslcert/aws"
   version = "~> 0.3.0"
@@ -37,6 +18,6 @@ module "user_cert" {
 
 locals {
   user_certificate_arn = local.subdomain_has_certificate ? local.subdomain_certificate_arn : module.user_cert.certificate_arn
-  nlb_certificate_arn  = local.user_certificate_arn != "" ? local.user_certificate_arn : module.cert.certificate_arn
+  nlb_certificate_arn  = local.user_certificate_arn
   nlb_tls              = local.nlb_certificate_arn != ""
 }
