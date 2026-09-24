@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nullstone-modules/vault-cluster/internal/aws/nodetls"
 	"github.com/nullstone-modules/vault-cluster/internal/aws/s3"
 	"github.com/nullstone-modules/vault-cluster/internal/aws/secretsmanager"
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster"
@@ -42,14 +43,19 @@ Commands:
   snapshot schedule                 Cron loop (BACKUP_SCHEDULE; empty disables)
   health                            Print seal status
   health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
+  tls provision                     Write node TLS files (AWS cluster CA)
 
 Local key material: BOOTSTRAP_DIR (default .bootstrap).
 AWS: VAULT_INIT_SECRET_ARN, VAULT_PROVISIONING_SECRET_ARN, VAULT_OPERATOR_SECRET_ARN.
 Optional: SNAPSHOT_BUCKET, SNAPSHOT_PREFIX (default vault-snapshots).
+tls provision: VAULT_TLS_DIR, VAULT_TLS_IP, SNAPSHOT_BUCKET.
 `)
 }
 
 func run(cmd string, args []string) error {
+	if cmd == "tls" {
+		return runTLS(args)
+	}
 	cfg := vaultcluster.ConfigFromEnv()
 	c, err := vaultcluster.New(cfg)
 	if err != nil {
@@ -366,6 +372,23 @@ func awsClaimInit() (bool, error) {
 		return false, err
 	}
 	return s3.ClaimInit(store, os.Getenv("SNAPSHOT_BUCKET"), getenv("SNAPSHOT_PREFIX", "vault-snapshots"), os.Getenv("VAULT_RAFT_NODE_ID"))
+}
+
+func runTLS(args []string) error {
+	if len(args) != 1 || args[0] != "provision" {
+		return fmt.Errorf("usage: vault-utils tls provision")
+	}
+	store, err := s3.New()
+	if err != nil {
+		return err
+	}
+	return nodetls.Provision(
+		store,
+		os.Getenv("SNAPSHOT_BUCKET"),
+		getenv("SNAPSHOT_PREFIX", "vault-snapshots"),
+		getenv("VAULT_TLS_DIR", "/opt/vault/tls"),
+		os.Getenv("VAULT_TLS_IP"),
+	)
 }
 
 func bootstrapDir() string {

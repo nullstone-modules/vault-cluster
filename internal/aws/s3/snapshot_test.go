@@ -55,6 +55,15 @@ func TestObjectKey(t *testing.T) {
 	}
 }
 
+func TestClusterCAKey(t *testing.T) {
+	if got := ClusterCAKey(""); got != "vault-snapshots/.cluster-ca" {
+		t.Fatalf("default prefix %q", got)
+	}
+	if got := ClusterCAKey("vault-snapshots"); got != "vault-snapshots/.cluster-ca" {
+		t.Fatalf("key %q", got)
+	}
+}
+
 func TestListSnapshots(t *testing.T) {
 	store := memObjects{
 		"b/vault-snapshots/vault-20260101T000000Z.snap": []byte("old"),
