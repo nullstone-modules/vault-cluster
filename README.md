@@ -30,7 +30,8 @@ There is no `module "vault_cluster" { source = "./${var.cloud}" }` switch. Share
 11. [Break-glass](#break-glass)
 12. [Testing](#testing)
 13. [Troubleshooting](#troubleshooting)
-14. [Security](#security)
+14. [App access](#app-access)
+15. [Security](#security)
 
 ## Scope
 
@@ -388,6 +389,22 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 | generate-root permission denied | Vault 2.0 needs the operator token. See [Break-glass](#break-glass). |
 | Permission denied on tenant secrets | Expected for provisioning |
 | Everything denied | Audit volume full or unwritable |
+
+## App access
+
+`aws/aws-vault-access` connects an app to `aws-ec2-vault-cluster`.
+
+Connect `vault` to the cluster. The app module must expose `security_group_id`.
+
+The capability sets `VAULT_ADDR` from the cluster outputs (`http://<vault_fqdn>:<vault_api_port>`). It opens that port from the app security group to the NLB, and into the NLB from the app.
+
+The app does not receive a Vault token. At startup it logs in with its IAM role:
+
+```bash
+vault login -method=aws role=<app-role>
+```
+
+Vault checks that role and returns a short-lived token. The operator token is not injected.
 
 ## Security
 
