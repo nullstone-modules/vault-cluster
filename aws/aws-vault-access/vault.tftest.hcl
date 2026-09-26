@@ -1,0 +1,82 @@
+mock_provider "ns" {}
+mock_provider "aws" {}
+
+variables {
+  vault_role = "billing"
+  app_metadata = {
+    security_group_id = "sg-app"
+  }
+}
+
+run "injects_the_capability_role" {
+  command = plan
+
+  override_data {
+    target = data.ns_connection.vault
+    values = {
+      outputs = {
+        vault_fqdn            = "vault.internal"
+        nlb_security_group_id = "sg-nlb"
+        vault_api_port        = "8200"
+      }
+    }
+  }
+
+  assert {
+    condition     = output.env == [{ name = "VAULT_ADDR", value = "http://vault.internal:8200" }, { name = "VAULT_ROLE", value = "billing" }]
+    error_message = "The app must receive only VAULT_ADDR and the capability role."
+  }
+
+  assert {
+    condition     = aws_security_group_rule.app_to_vault.from_port == 8200 && aws_security_group_rule.app_to_vault.to_port == 8200 && aws_security_group_rule.app_to_vault.source_security_group_id == "sg-nlb"
+    error_message = "App egress must use the cluster API port and the NLB security group."
+  }
+
+  assert {
+    condition     = aws_security_group_rule.vault_from_app.from_port == 8200 && aws_security_group_rule.vault_from_app.to_port == 8200 && aws_security_group_rule.vault_from_app.source_security_group_id == "sg-app"
+    error_message = "NLB ingress must use the cluster API port and the app security group."
+  }
+}
+
+run "uses_the_cluster_port" {
+  command = plan
+
+  override_data {
+    target = data.ns_connection.vault
+    values = {
+      outputs = {
+        vault_fqdn            = "vault.internal"
+        nlb_security_group_id = "sg-nlb"
+        vault_api_port        = "8443"
+      }
+    }
+  }
+
+  assert {
+    condition     = output.env[0].value == "http://vault.internal:8443" && aws_security_group_rule.app_to_vault.from_port == 8443 && aws_security_group_rule.vault_from_app.from_port == 8443
+    error_message = "VAULT_ADDR and the security group rules must use vault_api_port from the cluster."
+  }
+}
+
+run "rejects_invalid_role" {
+  command = plan
+
+  variables {
+    vault_role = "other role"
+  }
+
+  override_data {
+    target = data.ns_connection.vault
+    values = {
+      outputs = {
+        vault_fqdn            = "vault.internal"
+        nlb_security_group_id = "sg-nlb"
+        vault_api_port        = "8200"
+      }
+    }
+  }
+
+  expect_failures = [
+    var.vault_role,
+  ]
+}
