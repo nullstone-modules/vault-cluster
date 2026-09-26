@@ -3,6 +3,10 @@ output "env" {
     {
       name  = "VAULT_ADDR"
       value = local.vault_addr
+    },
+    {
+      name  = "VAULT_ROLE"
+      value = var.vault_role
     }
   ]
 }
