@@ -353,11 +353,16 @@ func fileKeyStore() vaultcluster.FileKeyStore {
 }
 
 func awsKeyStore() (*secretsmanager.KeyStore, error) {
-	return secretsmanager.New(
+	store, err := secretsmanager.New(
 		os.Getenv("VAULT_INIT_SECRET_ARN"),
 		os.Getenv("VAULT_PROVISIONING_SECRET_ARN"),
 		os.Getenv("VAULT_OPERATOR_SECRET_ARN"),
 	)
+	if err != nil {
+		return nil, err
+	}
+	store.AwsAuthARN = os.Getenv("VAULT_AWS_AUTH_SECRET_ARN")
+	return store, nil
 }
 
 func awsClaimInit() (bool, error) {

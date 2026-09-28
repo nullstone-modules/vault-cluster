@@ -74,3 +74,4 @@ test-results/
 .cursor/
 *.swp
 *~
+aws/aws-ec2-vault-cluster/files/aws-auth.zip

@@ -396,7 +396,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 
 Connect `vault` to the cluster. The app module must expose `security_group_id`.
 
-Set `vault_role` on the capability. The app receives `VAULT_ADDR` and `VAULT_ROLE`. The capability opens the API port from the app security group to the NLB, and into the NLB from the app.
+Set `vault_role` on the capability. The app module must expose `role_name`. The app receives `VAULT_ADDR` and `VAULT_ROLE`. During apply the capability calls the cluster function, which binds only that IAM role to `vault_role`.
 
 The app does not receive a Vault token. At startup it logs in with its IAM role:
 
@@ -404,7 +404,7 @@ The app does not receive a Vault token. At startup it logs in with its IAM role:
 vault login -method=aws role="$VAULT_ROLE"
 ```
 
-Vault must allow that app IAM role on `VAULT_ROLE` only. A login as any other role is rejected. The operator token is not injected.
+A login as any other role is denied. The operator token is not injected.
 
 ## Security
 

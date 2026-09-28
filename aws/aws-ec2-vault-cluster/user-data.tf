@@ -7,6 +7,7 @@ locals {
     init_secret_arn         = aws_secretsmanager_secret.platform["init"].arn
     provisioning_secret_arn = aws_secretsmanager_secret.platform["provisioning"].arn
     operator_secret_arn     = aws_secretsmanager_secret.platform["operator"].arn
+    aws_auth_secret_arn     = aws_secretsmanager_secret.platform["aws-auth"].arn
     snapshot_bucket_name    = local.snapshot_bucket_name
     snapshot_prefix         = local.snapshot_prefix
     backup_schedule         = var.backup_schedule

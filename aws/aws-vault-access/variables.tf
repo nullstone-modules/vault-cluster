@@ -14,6 +14,12 @@ variable "vault_role" {
   }
 }
 
+variable "vault_policies" {
+  description = "Vault policies granted by vault_role. The app IAM role cannot use any other role."
+  type        = list(string)
+  default     = []
+}
+
 locals {
   security_group_id = var.app_metadata["security_group_id"]
 }

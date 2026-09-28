@@ -33,6 +33,11 @@ output "vault_fqdn" {
   description = "string ||| Internal DNS name for the Vault API (vault.internal)."
 }
 
+output "admin_function_name" {
+  value       = aws_lambda_function.aws_auth.function_name
+  description = "string ||| In-VPC function that binds an app IAM role to one Vault AWS auth role."
+}
+
 output "vault_api_port" {
   value       = tostring(local.vault_api_port)
   description = "string ||| Vault API port."
