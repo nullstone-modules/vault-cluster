@@ -141,6 +141,10 @@ func ObjectKey(prefix, stamp string) string {
 	return normalizePrefix(prefix) + "/vault-" + stamp + ".snap"
 }
 
+func ClusterCAKey(prefix string) string {
+	return normalizePrefix(prefix) + "/.cluster-ca"
+}
+
 func PutSnapshot(store ObjectStore, bucket, prefix string, data []byte) (string, error) {
 	if bucket == "" {
 		return "", fmt.Errorf("SNAPSHOT_BUCKET is not set")

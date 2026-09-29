@@ -10,9 +10,9 @@ resource "aws_lb" "this" {
 }
 
 resource "aws_lb_target_group" "api" {
-  name        = "${local.resource_name}-api"
+  name_prefix = "vault-"
   port        = local.vault_api_port
-  protocol    = "TCP"
+  protocol    = "TLS"
   vpc_id      = local.vpc_id
   target_type = "instance"
   tags        = local.tags
