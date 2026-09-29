@@ -15,9 +15,19 @@ variable "vault_role" {
 }
 
 variable "vault_policies" {
-  description = "Vault policies granted by vault_role. The app IAM role cannot use any other role."
+  description = "Vault policies granted by vault_role. Platform and tenant policy names are rejected."
   type        = list(string)
   default     = []
+
+  validation {
+    condition = alltrue([
+      for policy in var.vault_policies :
+      can(regex("^[A-Za-z0-9_-]+$", policy)) &&
+      !contains(["admin", "aws-auth", "default", "operator", "provisioning", "root"], policy) &&
+      !startswith(policy, "tenant-")
+    ])
+    error_message = "vault_policies cannot name a platform or tenant policy."
+  }
 }
 
 locals {

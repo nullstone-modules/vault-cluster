@@ -34,7 +34,7 @@ output "vault_fqdn" {
 }
 
 output "admin_function_name" {
-  value       = aws_lambda_function.aws_auth.function_name
+  value       = module.vault_admin.function_name
   description = "string ||| In-VPC function that binds an app IAM role to one Vault AWS auth role."
 }
 

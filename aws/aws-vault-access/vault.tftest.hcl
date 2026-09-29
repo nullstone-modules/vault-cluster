@@ -68,6 +68,30 @@ run "uses_the_cluster_port" {
   }
 }
 
+run "rejects_platform_policy" {
+  command = plan
+
+  variables {
+    vault_policies = ["operator"]
+  }
+
+  override_data {
+    target = data.ns_connection.vault
+    values = {
+      outputs = {
+        vault_fqdn            = "vault.internal"
+        nlb_security_group_id = "sg-nlb"
+        vault_api_port        = "8200"
+        admin_function_name   = "vault-aws-auth"
+      }
+    }
+  }
+
+  expect_failures = [
+    var.vault_policies,
+  ]
+}
+
 run "rejects_invalid_role" {
   command = plan
 
