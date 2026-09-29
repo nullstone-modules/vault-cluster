@@ -26,9 +26,23 @@ variable "ami" {
   type        = string
   default     = ""
   description = <<EOF
-AMI ID for Vault nodes. Leave empty to use the latest account AMI tagged `Name=nullstone-vault` (x86_64, baked by vault-node/vault.pkr.hcl).
+AMI ID for Vault nodes. Leave empty to use the latest AMI tagged `Name=nullstone-vault` (x86_64, baked by vault-node/vault.pkr.hcl) from `ami_owner`.
 The image must contain Vault CE, vault-utils, and amazon-ssm-agent.
 EOF
+}
+
+variable "ami_owner" {
+  type        = string
+  default     = "self"
+  description = <<EOF
+AWS account that owns the Vault AMI. Leave as self when this account bakes the image.
+For an org-shared image, set the bake account ID.
+EOF
+
+  validation {
+    condition     = var.ami_owner == "self" || can(regex("^[0-9]{12}$", var.ami_owner))
+    error_message = "ami_owner must be \"self\" or a 12-digit AWS account ID."
+  }
 }
 
 variable "backup_schedule" {
