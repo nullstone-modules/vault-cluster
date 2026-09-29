@@ -22,6 +22,7 @@ type KeyStore struct {
 	InitARN         string
 	ProvisioningARN string
 	OperatorARN     string
+	AwsAuthARN      string
 }
 
 func New(initARN, provisioningARN, operatorARN string) (*KeyStore, error) {
@@ -46,6 +47,11 @@ func (s KeyStore) tokenARN(name string) (string, error) {
 		return s.ProvisioningARN, nil
 	case "operator":
 		return s.OperatorARN, nil
+	case "aws-auth":
+		if s.AwsAuthARN == "" {
+			return "", fmt.Errorf("VAULT_AWS_AUTH_SECRET_ARN is required")
+		}
+		return s.AwsAuthARN, nil
 	default:
 		return "", fmt.Errorf("unknown token %q", name)
 	}

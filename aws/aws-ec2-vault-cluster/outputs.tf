@@ -33,6 +33,16 @@ output "vault_fqdn" {
   description = "string ||| Internal DNS name for the Vault API (vault.internal)."
 }
 
+output "admin_function_name" {
+  value       = module.vault_admin.function_name
+  description = "string ||| In-VPC function that binds an app IAM role to one Vault AWS auth role."
+}
+
+output "vault_api_port" {
+  value       = tostring(local.vault_api_port)
+  description = "string ||| Vault API port."
+}
+
 output "user_fqdn" {
   value       = local.subdomain_zone_id != "" ? trimsuffix(aws_route53_record.user[0].fqdn, ".") : ""
   description = "string ||| User-facing DNS name when a subdomain is connected."

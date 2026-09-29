@@ -1,5 +1,5 @@
 locals {
-  platform_secret_names = toset(["init", "provisioning", "operator"])
+  platform_secret_names = toset(["init", "provisioning", "operator", "aws-auth"])
 }
 
 resource "aws_secretsmanager_secret" "platform" {
