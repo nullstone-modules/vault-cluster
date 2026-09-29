@@ -392,11 +392,11 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 
 ## App access
 
-`aws/aws-vault-access` connects an app to `aws-ec2-vault-cluster`.
+`nullstone/aws-vault-access` connects an app to `aws-ec2-vault-cluster`.
 
-Connect `vault` to the cluster. The app module must expose `security_group_id`.
+Connect `vault` to the cluster. The app module must expose `security_group_id` and its IAM role name.
 
-Set `vault_role` on the capability. The app module must expose `role_name`. The app receives `VAULT_ADDR` and `VAULT_ROLE`. During apply the capability calls the cluster function, which binds only that IAM role to `vault_role`.
+`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`. During apply the capability calls the cluster function, which binds only that IAM role to that role.
 
 The app does not receive a Vault token. At startup it logs in with its IAM role:
 

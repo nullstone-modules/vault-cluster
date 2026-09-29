@@ -9,9 +9,9 @@ resource "aws_lambda_invocation" "aws_auth_role" {
   input = jsonencode({
     type = "aws_auth_role"
     data = {
-      name                    = var.vault_role
+      name                    = local.role_name
       bound_iam_principal_arn = data.aws_iam_role.app.arn
-      policies                = var.vault_policies
+      policies                = var.policies
     }
   })
 }

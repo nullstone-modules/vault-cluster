@@ -6,7 +6,7 @@ output "env" {
     },
     {
       name  = "VAULT_ROLE"
-      value = var.vault_role
+      value = local.role_name
     }
   ]
 }

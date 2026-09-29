@@ -2,7 +2,7 @@ mock_provider "ns" {}
 mock_provider "aws" {}
 
 variables {
-  vault_role = "billing"
+  role_name = "billing"
   app_metadata = {
     security_group_id = "sg-app"
     role_name         = "app"
@@ -72,7 +72,7 @@ run "rejects_platform_policy" {
   command = plan
 
   variables {
-    vault_policies = ["operator"]
+    policies = ["operator"]
   }
 
   override_data {
@@ -88,7 +88,7 @@ run "rejects_platform_policy" {
   }
 
   expect_failures = [
-    var.vault_policies,
+    var.policies,
   ]
 }
 
@@ -96,7 +96,7 @@ run "rejects_invalid_role" {
   command = plan
 
   variables {
-    vault_role = "other role"
+    role_name = "other role"
   }
 
   override_data {
@@ -112,6 +112,6 @@ run "rejects_invalid_role" {
   }
 
   expect_failures = [
-    var.vault_role,
+    var.role_name,
   ]
 }
