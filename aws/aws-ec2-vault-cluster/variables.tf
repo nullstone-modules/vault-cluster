@@ -33,10 +33,10 @@ EOF
 
 variable "ami_owner" {
   type        = string
-  default     = "self"
+  default     = "522657839841"
   description = <<EOF
-AWS account that owns the Vault AMI. Leave as self when this account bakes the image.
-For an org-shared image, set the bake account ID.
+AWS account that owns the published Vault AMI.
+Set to self when this account bakes the image.
 EOF
 
   validation {

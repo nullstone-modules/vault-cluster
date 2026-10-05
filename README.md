@@ -372,7 +372,7 @@ Repo configuration for the bake:
 
 - secret `NULLSTONE_API_KEY`
 
-The module looks up `tag:Name = nullstone-vault` from `ami_owner` (default `self`). Other accounts set `ami_owner` to the bake account ID. Override with `ami` for a specific image or architecture.
+The module looks up `tag:Name = nullstone-vault` from `ami_owner` (default `522657839841`, the account that publishes the Vault AMI). Set `ami_owner` to `self` when this account bakes the image. Override with `ami` for a specific image or architecture.
 
 `vault-node/files/` holds the cloud-neutral image content: base `vault.hcl` and the systemd units. `vault-node/aws/vault-node-configure` is the only AWS-specific piece, and other clouds add a sibling directory. The bake installs Vault CE 2.0, `vault-utils`, and that content, then enables every unit.
 
