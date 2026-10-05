@@ -1,0 +1,77 @@
+# Release vault-utils for admin machines.
+#
+# On a v* tag: cross-build binaries with SHA-256 checksums onto the GitHub release,
+# and push ghcr.io/nullstone-modules/vault-utils:<tag>.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - name: Unit tests
+        run: go test -short ./...
+
+      - name: Build
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for os in linux darwin windows; do
+            for arch in amd64 arm64; do
+              ext=""; [ "$os" = windows ] && ext=".exe"
+              GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath \
+                -ldflags="-s -w -X main.version=${VERSION}" \
+                -o "dist/vault-utils_${VERSION}_${os}_${arch}${ext}" ./cmd/vault-utils
+            done
+          done
+          cd dist && sha256sum vault-utils_* > "vault-utils_${VERSION}_SHA256SUMS"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: gh release create "$VERSION" dist/* --title "$VERSION" --generate-notes --verify-tag
+
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VERSION=${{ github.ref_name }}
+          tags: ghcr.io/nullstone-modules/vault-utils:${{ github.ref_name }}
+
+      - name: Digest
+        run: echo "ghcr.io/nullstone-modules/vault-utils:${{ github.ref_name }}@${{ steps.push.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
