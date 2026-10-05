@@ -10,8 +10,8 @@ variable "role_name" {
   default     = ""
 
   validation {
-    condition     = var.role_name == "" || can(regex("^[A-Za-z0-9_-]+$", var.role_name))
-    error_message = "role_name must contain only letters, numbers, hyphens, and underscores."
+    condition     = var.role_name == "" || (can(regex("^[A-Za-z0-9_-]+$", var.role_name)) && !startswith(var.role_name, "admin-"))
+    error_message = "role_name must contain only letters, numbers, hyphens, and underscores, and cannot start with admin- (reserved for human admins)."
   }
 }
 

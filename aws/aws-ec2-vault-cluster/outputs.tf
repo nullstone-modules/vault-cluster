@@ -44,7 +44,7 @@ output "vault_api_port" {
 }
 
 output "user_fqdn" {
-  value       = local.subdomain_zone_id != "" ? trimsuffix(aws_route53_record.user[0].fqdn, ".") : ""
+  value       = local.user_fqdn
   description = "string ||| User-facing DNS name when a subdomain is connected."
 }
 
@@ -61,4 +61,29 @@ output "operator_secret_arn" {
 output "provisioning_secret_arn" {
   value       = aws_secretsmanager_secret.platform["provisioning"].arn
   description = "string ||| Secrets Manager ARN for the provisioning token."
+}
+
+output "vault_addr" {
+  value       = local.vault_addr
+  description = "string ||| Vault URL on vault.internal, with the scheme the NLB listens on."
+}
+
+output "user_vault_addr" {
+  value       = local.user_vault_addr
+  description = "string ||| Vault URL on the user-facing name, or empty when no subdomain is connected."
+}
+
+output "tls_server_name" {
+  value       = local.tls_server_name
+  description = "string ||| Name to verify in the NLB certificate when connecting to vault_addr, or empty without TLS."
+}
+
+output "admin_role_arns" {
+  value       = { for k, r in aws_iam_role.admin : k => r.arn }
+  description = "map(string) ||| IAM role per admin access level. Group members assume it, then run vault login -method=aws role=admin-<level>."
+}
+
+output "admin_group_names" {
+  value       = { for k, g in aws_iam_group.admin : k => g.name }
+  description = "map(string) ||| IAM group per admin access level. Add IAM users to grant Vault admin access."
 }

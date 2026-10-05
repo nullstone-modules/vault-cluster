@@ -45,3 +45,12 @@ locals {
   vault_cluster_tag_key   = "vault-cluster"
   vault_cluster_tag_value = local.resource_name
 }
+
+locals {
+  user_fqdn       = local.subdomain_zone_id != "" ? trimsuffix(aws_route53_record.user[0].fqdn, ".") : ""
+  vault_scheme    = local.nlb_tls ? "https" : "http"
+  vault_addr      = "${local.vault_scheme}://${local.vault_fqdn}:${local.vault_api_port}"
+  user_vault_addr = local.user_fqdn != "" ? "${local.vault_scheme}://${local.user_fqdn}:${local.vault_api_port}" : ""
+  # The NLB certificate names the user-facing host, never vault.internal.
+  tls_server_name = local.nlb_tls ? local.user_fqdn : ""
+}
