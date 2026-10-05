@@ -22,16 +22,18 @@ There is no `module "vault_cluster" { source = "./${var.cloud}" }` switch. Share
 3. [Repository layout](#repository-layout)
 4. [Prerequisites](#prerequisites)
 5. [Quick start](#quick-start)
-6. [Commands](#commands)
-7. [Tenant isolation](#tenant-isolation)
-8. [Identities](#identities)
-9. [Health](#health)
-10. [Backup, restore, and disaster recovery](#backup-restore-and-disaster-recovery)
-11. [Break-glass](#break-glass)
-12. [Testing](#testing)
-13. [Troubleshooting](#troubleshooting)
-14. [App access](#app-access)
-15. [Security](#security)
+6. [Getting started (admins)](#getting-started-admins)
+7. [Commands](#commands)
+8. [Tenant isolation](#tenant-isolation)
+9. [Identities](#identities)
+10. [Health](#health)
+11. [Backup, restore, and disaster recovery](#backup-restore-and-disaster-recovery)
+12. [Break-glass](#break-glass)
+13. [Testing](#testing)
+14. [Troubleshooting](#troubleshooting)
+15. [App access](#app-access)
+16. [Setting up admins](#setting-up-admins)
+17. [Security](#security)
 
 ## Scope
 
@@ -83,6 +85,7 @@ vault-cluster/
 ├── cmd/                  Go app entrypoints (vault-utils CLI)
 ├── internal/vaultcluster/ shared Vault library
 ├── internal/aws/         AWS adapters (secretsmanager, s3)
+├── internal/nsenv/       Nullstone workspace lookup for `vault-utils env`
 ├── local/                Compose target, snapshots
 ├── aws/aws-ec2-vault-cluster/   Nullstone AWS module
 ├── gcp/                  Nullstone Terraform module (not yet implemented)
@@ -94,6 +97,8 @@ vault-cluster/
 Docker Desktop (Compose v2). Go 1.26 for `go test`. `curl` and `jq` for the manual examples below; Vault CLI is optional except break-glass decode.
 
 Images are pinned by tag and digest in `local/compose.yml` (Vault 2.0, PostgreSQL 18-alpine). Never `latest`.
+
+`local/compose.yml` builds `vault-utils` from this tree. Released binaries and `ghcr.io/nullstone-modules/vault-utils` images come from pushing a `v*` tag (`.github/workflows/release.yml`).
 
 ```bash
 docker --version
@@ -131,6 +136,81 @@ Back up `local/.bootstrap/vault-init.json` immediately. Without it this volume c
 
 Do not commit `.bootstrap/` or `.env`. Do not run `vault operator unseal`.
 
+## Getting started (admins)
+
+For an `aws-ec2-vault-cluster`. Admins log in with their own AWS identity. Nobody handles the `provisioning` or `operator` token.
+
+1. **Prerequisites**
+   - Membership in the cluster's admin IAM group (output `admin_group_names`), or a principal in `admin_principals`. Ask the cluster owner ([Setting up admins](#setting-up-admins)).
+   - A network path into the VPC. The NLB is internal: use a VPN, a Tailscale subnet router, or similar.
+   - Vault CLI and AWS CLI v2.
+   - `vault-utils` from [Releases](https://github.com/nullstone-modules/vault-cluster/releases). Check it against `SHA256SUMS`.
+     Or run `ghcr.io/nullstone-modules/vault-utils:<tag>@sha256:<digest>` (digest in the release run summary). Pin by digest.
+   - A Nullstone API key (`nullstone set-profile`, or `NULLSTONE_API_KEY`).
+
+2. **Connect**
+
+   ```bash
+   eval "$(vault-utils env --org <org> --stack <stack> --env <env> --block <block>)"
+   vault status
+   ```
+
+   PowerShell: `vault-utils env ... | Out-String | Invoke-Expression`. `--internal` uses `vault.internal` instead of the user-facing name. `env` warns on stderr if Vault is unreachable.
+
+3. **Log in**
+
+   Group members add an AWS profile. The session name must be your IAM user name. MFA is required by default.
+
+   ```ini
+   # ~/.aws/config
+   [profile vault-tenants]
+   source_profile    = default
+   role_arn          = <admin_role_arns["tenants"]>
+   role_session_name = <your IAM user name>
+   mfa_serial        = arn:aws:iam::<account>:mfa/<device>
+   ```
+
+   ```bash
+   eval "$(aws configure export-credentials --profile vault-tenants --format env)"
+   vault login -method=aws role=admin-tenants
+   vault token lookup
+   ```
+
+   `token lookup` shows `policies [default provisioning]` and a 1h TTL (8h max). SSO users run `aws sso login --profile <p>`, export that profile, and log in to `role=admin-<key>`. Leave `region` unset: the auth mount verifies against the global STS endpoint.
+
+4. **First tasks**
+
+   ```bash
+   vault-utils health
+   vault-utils tenants create acme-corp
+   ```
+
+   The reader and writer `role_id` and `secret_id` print once. Write a secret as the writer:
+
+   ```bash
+   TENANT_TOKEN=$(vault write -field=token auth/approle/login role_id=<writer role_id> secret_id=<writer secret_id>)
+   VAULT_TOKEN=$TENANT_TOKEN vault kv put -mount=kv customers/acme-corp/app-config api_key=FAKE-value
+   vault-utils tenants destroy acme-corp --yes
+   ```
+
+   `vault-utils` uses the `vault login` token when `VAULT_TOKEN` is unset.
+
+5. **When things fail**
+
+   | Symptom | Cause |
+   |---|---|
+   | Timeout or connection refused | No network path into the VPC, or the VPN does not route the VPC CIDR |
+   | x509 certificate error with `--internal` | `VAULT_TLS_SERVER_NAME` unset. Re-run `vault-utils env` |
+   | `role "admin-…" could not be found` | No such admin role. Check the name, or the cluster has not rolled since `admin_principals` changed |
+   | 403 on `vault login` | Your AWS identity is not the bound principal: wrong profile, session name is not your IAM user name, or not in the group |
+   | `AccessDenied` from `aws configure export-credentials` | Not in the IAM group, or no MFA |
+   | 403 after login | That access level does not allow it. `vault token lookup` shows your policies |
+   | 503 sealed | Nodes cannot reach KMS. Escalate to the cluster owner |
+
+6. **What admins cannot do**
+
+   Read or purge tenant secrets, restore snapshots, write policies or auth roles, or mint tokens. Use [Break-glass](#break-glass).
+
 ## Commands
 
 Run from `local/` unless noted. Destructive commands require `--yes`.
@@ -148,6 +228,9 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 | `go test -short ./...` | no | Unit tests (tenant ID, policy lint, render, compose lint) — repo root |
 | `go test ./internal/vaultcluster` | no | Isolation and credentials (needs Docker) — repo root |
 | `go test ./local` | no | Compose runtime conformance (needs Docker) — repo root |
+| `vault-utils env --org <org> --stack <stack> --env <env> --block <block>` | no | Shell settings for an AWS cluster — admin machine |
+| `vault-utils admins reconcile` | yes (revokes unlisted `admin-*`) | Re-apply `VAULT_ADMINS_FILE` — AWS node |
+| `vault-utils version` | no | Build version |
 
 ## Tenant isolation
 
@@ -200,9 +283,11 @@ Cross-tenant, wildcard, and traversal reads return HTTP 403. That is the isolati
 | Identity | Role |
 |---|---|
 | Root | Bootstrap only. Revoked when setup finishes. |
-| Provisioning | Create and offboard tenants. Cannot read tenant secrets. |
+| Provisioning | Create and offboard tenants. Cannot read tenant secrets. Automation and break-glass only. |
 | Tenant AppRole | One reader and one writer per tenant. |
-| Operator | Health, mounts, snapshots. Can start generate-root (recovery keys still required). Not a tenant secret reader. Cannot restore. |
+| Operator | Health, mounts, snapshots. Can start generate-root (recovery keys still required). Not a tenant secret reader. Cannot restore. Automation and break-glass only. |
+| AWS auth | Writes AWS auth roles: app roles through the cluster function (which refuses `admin-*`), admin roles from the nodes at boot. Cannot read tenant secrets. |
+| Human admin (AWS auth) | `admin-<level>` role bound to an IAM principal. Gets the provisioning and/or operator policy; 1h tokens, 8h max. See [Setting up admins](#setting-up-admins). |
 
 ## Health
 
@@ -356,7 +441,7 @@ To plan against real connections:
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
    - optional `subdomain` → `subdomain/aws/route53` (user-facing TLS name on the NLB)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
-4. In the plan, expect IAM, three Secrets Manager secrets (`protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A connected subdomain adds a user-facing cert (SNI) and alias. A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use `https://vault.internal:8200`. The NLB terminates TLS; Vault nodes still listen HTTP.
+4. In the plan, expect IAM, three Secrets Manager secrets (`protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an alias on the network internal zone, an internal NLB on 8200 (health 8210), an admin IAM role and group per access level, and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A connected subdomain adds a user-facing cert (SNI) and alias. A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use output `vault_addr` (or `user_vault_addr`). The NLB terminates TLS only with a connected subdomain; Vault nodes listen HTTP.
 
 Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
 
@@ -396,7 +481,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 
 Connect `vault` to the cluster. The app module must expose `security_group_id` and its IAM role name.
 
-`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`. During apply the capability calls the cluster function, which binds only that IAM role to that role.
+`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`, plus `VAULT_TLS_SERVER_NAME` when the NLB terminates TLS. `admin-*` role names are reserved. During apply the capability calls the cluster function, which binds only that IAM role to that role.
 
 The app does not receive a Vault token. At startup it logs in with its IAM role:
 
@@ -406,10 +491,42 @@ vault login -method=aws role="$VAULT_ROLE"
 
 A login as any other role is denied. The operator token is not injected.
 
+## Setting up admins
+
+For whoever owns the `aws-ec2-vault-cluster` workspace. The module creates one IAM group and one IAM role per access level. Vault role `admin-<level>` is bound to that IAM role.
+
+| Access | Vault role | Policy | Allows |
+|---|---|---|---|
+| `tenants` | `admin-tenants` | `provisioning` | Onboard and offboard tenants |
+| `operator` | `admin-operator` | `operator` | Health, mounts, snapshots, start generate-root |
+
+Neither level reads tenant secrets. Tokens last 1h (8h max) and are not periodic.
+
+**Grant:** add the IAM user to the group in output `admin_group_names`. **Revoke:** remove them. Neither needs an apply. The role trust requires the session name to equal the IAM user name, and MFA unless `admin_require_mfa = false`.
+
+Principals that cannot join an IAM group (Identity Center permission sets, roles in other accounts, a single IAM user) go in `admin_principals`. Each key becomes `admin-<key>`:
+
+```hcl
+admin_principals = {
+  "sso-vault-admins" = { principal_arn = "arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_VaultAdmin_*", access = ["tenants"] }
+  "ops"              = { principal_arn = "arn:aws:iam::210987654321:role/vault-ops", access = ["operator"] }
+  "brad"             = { principal_arn = "arn:aws:iam::123456789012:user/brad", access = ["tenants", "operator"] }
+}
+```
+
+To rotate a principal, change `principal_arn` and apply. To revoke it, remove the key and apply. Changes reach Vault through user-data, so an apply rolls the nodes. Each new node writes the `admin-*` roles at boot and deletes any `admin-*` role not listed. A failed binding is logged (`journalctl -u vault-bootstrap`) and does not stop the node.
+
+- One principal maps to one Vault role across the AWS auth mount. A principal already bound to an app role is refused.
+- A trailing `*` is the only wildcard. SSO roles live under `/aws-reserved/sso.amazonaws.com/` (sometimes with a region segment), so include that path. For a wildcard, Vault looks up the caller's full ARN with `iam:GetRole` or `iam:GetUser`, which the node role has.
+- Exact ARNs are pinned to the principal's unique ID (`resolve_aws_unique_ids`). A deleted and recreated user or role is locked out until the next node roll, or until `vault-utils admins reconcile` runs on a node.
+- Audit: `auth.metadata.client_arn` on each request names the person: `assumed-role/<admin role>/<IAM user>`, or `assumed-role/AWSReservedSSO_…/<SSO user>`. The mount keeps `iam_alias = role_id` (the default), so all members of a role share one Vault entity, and app logins don't create an entity per session.
+- The NLB admits the VPC CIDR only. A VPN or subnet router must source-NAT into the VPC.
+- Apply rights on this workspace, and IAM rights over the admin groups, are effectively Vault admin rights.
+
 ## Security
 
 - Host ports bind to `127.0.0.1` only
-- AWS NLB terminates TLS for `vault.internal` and an optional connected subdomain; Vault nodes listen HTTP on 8200
+- AWS NLB terminates TLS only when a subdomain is connected, with a certificate for that name. Clients on `vault.internal` verify it with `VAULT_TLS_SERVER_NAME` (output `tls_server_name`). Without a subdomain the NLB forwards plain TCP. Vault nodes listen HTTP on 8200
 - No Vault `-dev` mode
 - Root token revoked after bootstrap
 - Unseal keys, tokens, and `.env` are gitignored (mode 600). Never printed to logs
@@ -417,5 +534,7 @@ A login as any other role is denied. The operator token is not injected.
 - Audit values are HMAC'd. Raw secrets must not appear in the audit log
 - Provisioning cannot read tenant KV
 - Operator cannot read tenant KV
+- Admin access: humans log in with AWS IAM to `admin-*` roles (1h tokens, 8h max) and never handle platform tokens. Apps cannot write `admin-*` roles. Apply rights on the cluster workspace, or IAM rights on the admin groups, are Vault admin rights
+- `health serve` renews the periodic provisioning, operator, and aws-auth tokens on every node
 - Local Compose sets `disable_mlock = true` because Docker and GitHub Actions cannot mlock. Production hosts should use `IPC_LOCK`
 - Dynamic credentials (Go library and tests only): bounded TTL, revoke drops the Postgres role, residue scan expects zero leftover `v-*` roles
