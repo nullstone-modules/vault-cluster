@@ -122,6 +122,11 @@ run "binds_groups_and_extra_principals" {
     condition     = startswith(aws_iam_group.admin["tenants"].name, "core-prod-vault-") && endswith(aws_iam_group.admin["tenants"].name, "-vault-tenants")
     error_message = "Group names must carry stack, env, block ref, and the resource suffix."
   }
+
+  assert {
+    condition     = startswith(aws_iam_role.admin["operator"].name_prefix, "vault-") && endswith(aws_iam_role.admin["operator"].name_prefix, "-admin-operator-") && length(aws_iam_role.admin["operator"].name_prefix) <= 38
+    error_message = "Admin roles use a bounded name_prefix of block ref, suffix, and level."
+  }
 }
 
 run "uses_http_without_a_subdomain" {
@@ -245,7 +250,7 @@ run "uses_https_with_a_subdomain" {
   }
 }
 
-run "truncates_long_group_names" {
+run "bounds_long_iam_names" {
   command = plan
 
   override_data {
@@ -253,10 +258,15 @@ run "truncates_long_group_names" {
     values = {
       stack_name = "a-very-long-stack-name-that-keeps-going-and-going-and-going"
       env_name   = "an environment with spaces and a very long name that also keeps going"
-      block_ref  = "vault"
+      block_ref  = "vault-cluster-for-prod"
       block_name = "vault"
       aws_tags   = {}
     }
+  }
+
+  assert {
+    condition     = alltrue([for p in values(local.admin_role_prefixes) : length(p) <= 38 && can(regex("^[A-Za-z0-9+=,.@_-]+$", p))])
+    error_message = "Admin role name_prefix must leave room for the 26-character suffix within 64 characters."
   }
 
   assert {

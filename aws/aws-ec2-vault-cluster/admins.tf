@@ -9,6 +9,9 @@ locals {
   admin_group_scope  = substr(replace("${data.ns_workspace.this.stack_name}-${data.ns_workspace.this.env_name}", "/[^A-Za-z0-9+=,.@_-]/", "-"), 0, 60)
   admin_group_prefix = "${local.admin_group_scope}-${local.resource_name}"
 
+  # AWS appends 26 characters to name_prefix; 38 + 26 keeps role names within IAM's 64-character limit.
+  admin_role_prefixes = { for level in local.admin_access_levels : level => "${trimsuffix(substr(local.resource_name, 0, 38 - length("-admin-${level}-")), "-")}-admin-${level}-" }
+
   # Nodes write these as admin-* AWS auth roles at boot and remove any admin-* role not listed.
   admin_bindings = concat(
     [for level in sort(tolist(local.admin_access_levels)) : {
@@ -53,7 +56,7 @@ data "aws_iam_policy_document" "admin_assume" {
 resource "aws_iam_role" "admin" {
   for_each = local.admin_access_levels
 
-  name               = "${local.resource_name}-admin-${each.key}"
+  name_prefix        = local.admin_role_prefixes[each.key]
   assume_role_policy = data.aws_iam_policy_document.admin_assume.json
   tags               = local.tags
 }
