@@ -4,6 +4,11 @@ data "aws_partition" "this" {}
 locals {
   admin_access_levels = toset(["tenants", "operator"])
 
+  # IAM groups are account-wide and block_ref is unique only within a stack. Stack and env make the name unique
+  # within an org; the resource suffix covers other orgs in the same account. Only stack-env is truncated (128-char limit).
+  admin_group_scope  = substr(replace("${data.ns_workspace.this.stack_name}-${data.ns_workspace.this.env_name}", "/[^A-Za-z0-9+=,.@_-]/", "-"), 0, 60)
+  admin_group_prefix = "${local.admin_group_scope}-${local.resource_name}"
+
   # Nodes write these as admin-* AWS auth roles at boot and remove any admin-* role not listed.
   admin_bindings = concat(
     [for level in sort(tolist(local.admin_access_levels)) : {
@@ -56,7 +61,7 @@ resource "aws_iam_role" "admin" {
 resource "aws_iam_group" "admin" {
   for_each = local.admin_access_levels
 
-  name = "${local.resource_name}-vault-${each.key}"
+  name = "${local.admin_group_prefix}-vault-${each.key}"
 }
 
 resource "aws_iam_group_policy" "admin" {

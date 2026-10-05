@@ -3,7 +3,9 @@ mock_provider "random" {}
 mock_provider "ns" {
   mock_data "ns_workspace" {
     defaults = {
-      block_ref  = "vault-abcde"
+      stack_name = "core"
+      env_name   = "prod"
+      block_ref  = "vault"
       block_name = "vault"
       aws_tags   = {}
     }
@@ -114,6 +116,11 @@ run "binds_groups_and_extra_principals" {
   assert {
     condition     = keys(aws_iam_group.admin) == ["operator", "tenants"]
     error_message = "One IAM group per access level."
+  }
+
+  assert {
+    condition     = startswith(aws_iam_group.admin["tenants"].name, "core-prod-vault-") && endswith(aws_iam_group.admin["tenants"].name, "-vault-tenants")
+    error_message = "Group names must carry stack, env, block ref, and the resource suffix."
   }
 }
 
@@ -235,5 +242,25 @@ run "uses_https_with_a_subdomain" {
   assert {
     condition     = output.vault_addr == "https://vault.internal:8200" && output.user_vault_addr == "https://vault.acme.example.com:8200" && output.tls_server_name == "vault.acme.example.com"
     error_message = "With TLS, vault.internal needs the user-facing name for certificate verification."
+  }
+}
+
+run "truncates_long_group_names" {
+  command = plan
+
+  override_data {
+    target = data.ns_workspace.this
+    values = {
+      stack_name = "a-very-long-stack-name-that-keeps-going-and-going-and-going"
+      env_name   = "an environment with spaces and a very long name that also keeps going"
+      block_ref  = "vault"
+      block_name = "vault"
+      aws_tags   = {}
+    }
+  }
+
+  assert {
+    condition     = alltrue([for g in aws_iam_group.admin : length(g.name) <= 128 && can(regex("^[A-Za-z0-9+=,.@_-]+$", g.name))])
+    error_message = "Group names must fit IAM's 128-character limit and character set."
   }
 }

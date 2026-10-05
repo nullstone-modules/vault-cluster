@@ -502,7 +502,7 @@ For whoever owns the `aws-ec2-vault-cluster` workspace. The module creates one I
 
 Neither level reads tenant secrets. Tokens last 1h (8h max) and are not periodic.
 
-**Grant:** add the IAM user to the group in output `admin_group_names`. **Revoke:** remove them. Neither needs an apply. The role trust requires the session name to equal the IAM user name, and MFA unless `admin_require_mfa = false`.
+**Grant:** add the IAM user to the group in output `admin_group_names`. Groups are named `<stack>-<env>-<block ref>-<suffix>-vault-<level>`, so clusters sharing an AWS account do not collide. **Revoke:** remove them. Neither needs an apply. The role trust requires the session name to equal the IAM user name, and MFA unless `admin_require_mfa = false`.
 
 Principals that cannot join an IAM group (Identity Center permission sets, roles in other accounts, a single IAM user) go in `admin_principals`. Each key becomes `admin-<key>`:
 
