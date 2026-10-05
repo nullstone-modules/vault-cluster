@@ -10,6 +10,7 @@ VAULT_INIT_SECRET_ARN=${init_secret_arn}
 VAULT_PROVISIONING_SECRET_ARN=${provisioning_secret_arn}
 VAULT_OPERATOR_SECRET_ARN=${operator_secret_arn}
 VAULT_AWS_AUTH_SECRET_ARN=${aws_auth_secret_arn}
+VAULT_ADMIN_AUTH_SECRET_ARN=${admin_auth_secret_arn}
 SNAPSHOT_BUCKET=${snapshot_bucket_name}
 SNAPSHOT_PREFIX=${snapshot_prefix}
 BACKUP_SCHEDULE="${backup_schedule}"

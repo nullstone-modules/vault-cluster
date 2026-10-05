@@ -12,6 +12,7 @@ locals {
     snapshot_prefix         = local.snapshot_prefix
     backup_schedule         = var.backup_schedule
     vault_api_addr          = local.vault_addr
-    admins_json             = jsonencode(local.admin_bindings)
+    admins_json             = jsonencode({ bindings = local.admin_bindings })
+    admin_auth_secret_arn   = aws_secretsmanager_secret.platform["admin-auth"].arn
   })
 }

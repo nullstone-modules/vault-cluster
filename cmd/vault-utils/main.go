@@ -45,7 +45,7 @@ Commands:
   snapshot schedule                 Cron loop (BACKUP_SCHEDULE; empty disables)
   health                            Print seal status
   health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
-  admins reconcile                  Write admin-* AWS auth roles from VAULT_ADMINS_FILE; remove the rest
+  admins reconcile                  Write admin-* auth roles (aws, gcp, oidc) from VAULT_ADMINS_FILE; remove the rest
   env --org --stack --env --block   Print shell settings for a Nullstone Vault cluster workspace
   version
 
@@ -411,6 +411,7 @@ func awsKeyStore() (*secretsmanager.KeyStore, error) {
 		return nil, err
 	}
 	store.AwsAuthARN = os.Getenv("VAULT_AWS_AUTH_SECRET_ARN")
+	store.AdminAuthARN = os.Getenv("VAULT_ADMIN_AUTH_SECRET_ARN")
 	return store, nil
 }
 

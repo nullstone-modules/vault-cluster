@@ -19,7 +19,7 @@ func runEnv(args []string) error {
 	org := fs.String("org", "", "Nullstone org (default: profile org or NULLSTONE_ORG)")
 	stack := fs.String("stack", "", "Nullstone stack")
 	env := fs.String("env", "", "Nullstone environment")
-	block := fs.String("block", "", "aws-ec2-vault-cluster block")
+	block := fs.String("block", "", "Vault cluster block")
 	profile := fs.String("profile", "", "nullstone CLI profile (default: NULLSTONE_PROFILE or default)")
 	shell := fs.String("shell", defaultShell(), "bash, zsh, fish, or powershell")
 	internal := fs.Bool("internal", false, "Use vault.internal instead of the user-facing name")
@@ -49,7 +49,7 @@ func printEnv(ctx context.Context, stdout, stderr io.Writer, ws nsenv.Workspace,
 	if err := nsenv.CheckContract(ws); err != nil {
 		return err
 	}
-	s, err := nsenv.SettingsFromOutputs(ws.Outputs, internal)
+	s, err := nsenv.SettingsFromOutputs(ws, internal)
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func printEnv(ctx context.Context, stdout, stderr io.Writer, ws nsenv.Workspace,
 	}
 	if err := nsenv.CheckReachable(ctx, s, reachTimeout); err != nil {
 		fmt.Fprintf(stderr, "warning: %s is unreachable (%v).\n", s.Addr, err)
-		fmt.Fprintf(stderr, "warning: the Vault NLB is internal to the VPC; connect through a VPN, a Tailscale subnet router, or similar.\n")
+		fmt.Fprintf(stderr, "warning: the Vault load balancer is private to the cluster network; connect through a VPN, a Tailscale subnet router, or similar.\n")
 	}
 	_, err = io.WriteString(stdout, out)
 	return err

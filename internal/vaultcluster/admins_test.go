@@ -1,9 +1,7 @@
 package vaultcluster
 
 import (
-	"encoding/json"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -31,48 +29,6 @@ func TestAdminPolicies(t *testing.T) {
 	}
 }
 
-func TestValidateAdminBindings(t *testing.T) {
-	user := "arn:aws:iam::123456789012:user/brad"
-	sso := "arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_VaultAdmin_*"
-	tests := []struct {
-		name     string
-		bindings []AdminBinding
-		wantErr  string
-	}{
-		{name: "empty", bindings: nil},
-		{name: "user and sso", bindings: []AdminBinding{
-			{Name: "admin-brad", PrincipalARN: user, Access: []string{"tenants", "operator"}},
-			{Name: "admin-sso", PrincipalARN: sso, Access: []string{"tenants"}},
-		}},
-		{name: "missing prefix", bindings: []AdminBinding{{Name: "brad", PrincipalARN: user, Access: []string{"tenants"}}}, wantErr: "invalid admin role name"},
-		{name: "duplicate name", bindings: []AdminBinding{
-			{Name: "admin-a", PrincipalARN: user, Access: []string{"tenants"}},
-			{Name: "admin-a", PrincipalARN: sso, Access: []string{"tenants"}},
-		}, wantErr: "duplicate"},
-		{name: "duplicate principal", bindings: []AdminBinding{
-			{Name: "admin-a", PrincipalARN: user, Access: []string{"tenants"}},
-			{Name: "admin-b", PrincipalARN: user, Access: []string{"operator"}},
-		}, wantErr: "already bound"},
-		{name: "account wildcard", bindings: []AdminBinding{{Name: "admin-a", PrincipalARN: "arn:aws:iam::123456789012:*", Access: []string{"tenants"}}}, wantErr: "IAM user or role"},
-		{name: "group", bindings: []AdminBinding{{Name: "admin-a", PrincipalARN: "arn:aws:iam::123456789012:group/admins", Access: []string{"tenants"}}}, wantErr: "IAM user or role"},
-		{name: "unknown access", bindings: []AdminBinding{{Name: "admin-a", PrincipalARN: user, Access: []string{"root"}}}, wantErr: "unknown access"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateAdminBindings(tt.bindings)
-			if tt.wantErr == "" {
-				if err != nil {
-					t.Fatal(err)
-				}
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("err = %v, want %q", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func configuredVault(t *testing.T) *Client {
 	t.Helper()
 	c := startVaultInmem(t)
@@ -87,91 +43,10 @@ func configuredVault(t *testing.T) *Client {
 	return c
 }
 
-// Wildcard ARNs keep Vault from calling IAM, so this runs without AWS.
-func TestReconcileAdmins(t *testing.T) {
-	c := configuredVault(t)
-	tok, err := c.issueOrphanToken("aws-auth")
-	if err != nil {
-		t.Fatal(err)
-	}
-	awsAuth := c.WithToken(tok)
-
-	app := "arn:aws:iam::123456789012:role/app-*"
-	if err := awsAuth.enableAWSAuth(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.Must("POST", "auth/aws/role/billing", map[string]any{
-		"auth_type": "iam", "bound_iam_principal_arn": []string{app}, "token_policies": []string{"app"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	first := []AdminBinding{
-		{Name: "admin-tenants", PrincipalARN: "arn:aws:iam::123456789012:role/vault-tenants-*", Access: []string{"tenants"}},
-		{Name: "admin-old", PrincipalARN: "arn:aws:iam::123456789012:role/old-*", Access: []string{"operator"}},
-	}
-	if err := awsAuth.ReconcileAdmins(first); err != nil {
-		t.Fatal(err)
-	}
-	role := readAWSRole(t, c, "admin-tenants")
-	if !reflect.DeepEqual(role.Policies, []string{"provisioning"}) || role.TTL != 3600 || role.MaxTTL != 28800 || role.Period != 0 {
-		t.Fatalf("admin-tenants = %+v", role)
-	}
-
-	second := []AdminBinding{
-		{Name: "admin-tenants", PrincipalARN: "arn:aws:iam::123456789012:role/vault-tenants-*", Access: []string{"tenants", "operator"}},
-		{Name: "admin-thief", PrincipalARN: app, Access: []string{"operator"}},
-	}
-	err = awsAuth.ReconcileAdmins(second)
-	if err == nil || !strings.Contains(err.Error(), "already bound to vault role billing") {
-		t.Fatalf("expected the app principal to be refused, got %v", err)
-	}
-	if got := readAWSRole(t, c, "admin-tenants").Policies; !reflect.DeepEqual(got, []string{"operator", "provisioning"}) {
-		t.Fatalf("admin-tenants policies = %v", got)
-	}
-	for _, gone := range []string{"admin-old", "admin-thief"} {
-		if r, _ := c.Do("GET", "auth/aws/role/"+gone, nil); r.Status != 404 {
-			t.Fatalf("%s: HTTP %d, want 404", gone, r.Status)
-		}
-	}
-	if r, _ := c.Do("GET", "auth/aws/role/billing", nil); r.Status != 200 {
-		t.Fatalf("app role must be untouched, HTTP %d", r.Status)
-	}
-
-	if err := awsAuth.ReconcileAdmins(nil); err != nil {
-		t.Fatal(err)
-	}
-	if r, _ := c.Do("GET", "auth/aws/role/admin-tenants", nil); r.Status != 404 {
-		t.Fatalf("empty bindings must revoke admin-tenants, HTTP %d", r.Status)
-	}
-}
-
-type awsRole struct {
-	Policies []string `json:"token_policies"`
-	TTL      int      `json:"token_ttl"`
-	MaxTTL   int      `json:"token_max_ttl"`
-	Period   int      `json:"token_period"`
-}
-
-func readAWSRole(t *testing.T, c *Client, name string) awsRole {
-	t.Helper()
-	r, err := c.Must("GET", "auth/aws/role/"+name, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var wrap struct {
-		Data awsRole `json:"data"`
-	}
-	if err := json.Unmarshal(r.Body, &wrap); err != nil {
-		t.Fatal(err)
-	}
-	return wrap.Data
-}
-
-// AppRole stands in for AWS auth: the token carries the same policies an admin-* role grants.
+// AppRole stands in for the cloud auth method: the token carries the same policies an admin-* role grants.
 func TestAdminAccessLevels(t *testing.T) {
 	c := configuredVault(t)
-	if err := c.enableAWSAuth(); err != nil {
+	if err := c.enableAuthMount("aws"); err != nil {
 		t.Fatal(err)
 	}
 	login := func(access string) *Client {

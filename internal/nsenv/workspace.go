@@ -10,8 +10,8 @@ import (
 	"gopkg.in/nullstone-io/go-api-client.v0/types"
 )
 
-// ClusterContract is every aws-ec2-vault-cluster variant.
-var ClusterContract = types.ModuleContractName{Category: "datastore", Provider: "aws", Platform: "vault", Subplatform: "*"}
+// ClusterContract is every Vault cluster module on any cloud.
+var ClusterContract = types.ModuleContractName{Category: "datastore", Provider: "*", Platform: "vault", Subplatform: "*"}
 
 type Workspace struct {
 	Module   string
@@ -96,7 +96,7 @@ func splitSource(source string) (string, string, error) {
 
 func CheckContract(ws Workspace) error {
 	if !ClusterContract.Match(ws.Contract) {
-		return fmt.Errorf("%s (%s) is not a Vault cluster; want a %s workspace such as aws-ec2-vault-cluster", ws.Module, ws.Contract, ClusterContract)
+		return fmt.Errorf("%s (%s) is not a Vault cluster; want a %s workspace", ws.Module, ws.Contract, ClusterContract)
 	}
 	return nil
 }

@@ -109,6 +109,11 @@ run "binds_groups_and_extra_principals" {
   }
 
   assert {
+    condition     = alltrue([for b in local.admin_bindings : b.method == "aws"]) && strcontains(base64decode(aws_launch_template.this.user_data), "VAULT_ADMIN_AUTH_SECRET_ARN=")
+    error_message = "AWS bindings use the aws method, and nodes get the admin-auth secret."
+  }
+
+  assert {
     condition     = strcontains(base64decode(aws_launch_template.this.user_data), "AWSReservedSSO_VaultAdmin_*") && strcontains(base64decode(aws_launch_template.this.user_data), "VAULT_ADMINS_FILE=/etc/vault.d/admins.json")
     error_message = "Bindings must reach the nodes through user-data."
   }

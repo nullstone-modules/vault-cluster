@@ -10,6 +10,8 @@ import (
 	"gopkg.in/nullstone-io/go-api-client.v0/types"
 )
 
+var awsEC2 = types.ModuleContractName{Category: "datastore", Provider: "aws", Platform: "vault", Subplatform: "ec2"}
+
 var tlsCluster = map[string]any{
 	"vault_fqdn":      "vault.internal",
 	"user_fqdn":       "vault.acme.example.com",
@@ -44,7 +46,7 @@ func TestSettingsFromOutputs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := SettingsFromOutputs(tt.outputs, tt.internal)
+			got, err := SettingsFromOutputs(Workspace{Contract: awsEC2, Outputs: tt.outputs}, tt.internal)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v", err)
 			}
@@ -54,7 +56,7 @@ func TestSettingsFromOutputs(t *testing.T) {
 			if (got.Note != "") != tt.wantNote {
 				t.Fatalf("note = %q", got.Note)
 			}
-			got.Note = ""
+			got.Note, got.LoginHint = "", ""
 			if got != tt.want {
 				t.Fatalf("got %+v want %+v", got, tt.want)
 			}
@@ -84,11 +86,8 @@ func TestRender(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.HasPrefix(got, tt.want) {
-			t.Fatalf("%s:\n got %q\nwant prefix %q", tt.shell, got, tt.want)
-		}
-		if !strings.HasSuffix(got, "# Log in with your AWS credentials: "+LoginHint+"\n") {
-			t.Fatalf("%s: missing login hint: %q", tt.shell, got)
+		if !strings.HasPrefix(got, tt.want) || strings.Contains(got, "# Log in") {
+			t.Fatalf("%s:\n got %q\nwant prefix %q and no hint", tt.shell, got, tt.want)
 		}
 	}
 	if _, err := Render("cmd", plain); err == nil {
@@ -111,7 +110,8 @@ func TestCheckContract(t *testing.T) {
 		{"ec2 cluster", types.ModuleContractName{Category: "datastore", Provider: "aws", Platform: "vault", Subplatform: "ec2"}, true},
 		{"postgres", types.ModuleContractName{Category: "datastore", Provider: "aws", Platform: "postgres", Subplatform: "rds"}, false},
 		{"vault access capability", types.ModuleContractName{Category: "capability", Subcategory: "datastores", Provider: "aws", Platform: "vault"}, false},
-		{"gcp vault", types.ModuleContractName{Category: "datastore", Provider: "gcp", Platform: "vault"}, false},
+		{"gcp vault", types.ModuleContractName{Category: "datastore", Provider: "gcp", Platform: "vault", Subplatform: "gce"}, true},
+		{"azure vault", types.ModuleContractName{Category: "datastore", Provider: "azure", Platform: "vault"}, true},
 	}
 	for _, tt := range tests {
 		var r Resolver = fakeResolver{ws: Workspace{Module: "nullstone/x", Contract: tt.contract, Outputs: tlsCluster}}
@@ -160,5 +160,32 @@ func TestLoadProfile(t *testing.T) {
 	empty, _ := loadProfile(t.TempDir(), "default")
 	if _, err := empty.APIConfig("acme"); err == nil || strings.Contains(err.Error(), "not-a-real") {
 		t.Fatalf("missing key: %v", err)
+	}
+}
+
+func TestLoginHint(t *testing.T) {
+	tests := []struct {
+		provider string
+		outputs  map[string]any
+		want     string
+	}{
+		{"aws", tlsCluster, "vault login -method=aws role=admin-tenants"},
+		{"gcp", tlsCluster, "vault login -method=gcp role=admin-tenants service_account=<admin service account>"},
+		{"azure", tlsCluster, "vault login -method=oidc role=admin-tenants"},
+		{"aws", map[string]any{"vault_addr": "https://v:8200", "admin_login_hint": "vault login -method=oidc role=admin-entra"}, "vault login -method=oidc role=admin-entra"},
+	}
+	for _, tt := range tests {
+		ws := Workspace{Contract: types.ModuleContractName{Category: "datastore", Provider: tt.provider, Platform: "vault"}, Outputs: tt.outputs}
+		s, err := SettingsFromOutputs(ws, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.LoginHint != tt.want {
+			t.Fatalf("%s: hint = %q", tt.provider, s.LoginHint)
+		}
+		out, _ := Render("bash", s)
+		if !strings.HasSuffix(out, "# Log in: "+tt.want+"\n") {
+			t.Fatalf("%s: render = %q", tt.provider, out)
+		}
 	}
 }

@@ -15,6 +15,11 @@ path "auth/aws/role/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
+# Human admin roles are written with the admin-auth token.
+path "auth/aws/role/admin-*" {
+  capabilities = ["read"]
+}
+
 path "auth/token/lookup-self" {
   capabilities = ["read"]
 }

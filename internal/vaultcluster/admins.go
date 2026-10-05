@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// AdminRolePrefix marks AWS auth roles owned by the cluster. Apps cannot write them.
+// AdminRolePrefix marks auth roles owned by the cluster. Apps cannot write them.
 const AdminRolePrefix = "admin-"
 
 const (
@@ -25,15 +25,21 @@ var adminAccessPolicies = map[string]string{
 	"operator": "operator",
 }
 
-var (
-	adminRoleName     = regexp.MustCompile(`^admin-[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$`)
-	adminPrincipalARN = regexp.MustCompile(`^arn:aws[a-z-]*:iam::[0-9]{12}:(user|role)/[A-Za-z0-9+=,.@_/-]+\*?$`)
-)
+var adminRoleName = regexp.MustCompile(`^admin-[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$`)
 
+// AdminConfig is the cloud-neutral admin file each cluster module renders (VAULT_ADMINS_FILE).
+type AdminConfig struct {
+	Bindings []AdminBinding `json:"bindings"`
+	OIDC     *OIDCConfig    `json:"oidc,omitempty"`
+}
+
+// AdminBinding binds one principal of one auth method to the Vault role Name.
+// Principal is an IAM ARN (aws), a service account email (gcp), or an IdP group (oidc).
 type AdminBinding struct {
-	Name         string   `json:"name"`
-	PrincipalARN string   `json:"principal_arn"`
-	Access       []string `json:"access"`
+	Name      string   `json:"name"`
+	Method    string   `json:"method"`
+	Principal string   `json:"principal"`
+	Access    []string `json:"access"`
 }
 
 func AdminPolicies(access []string) ([]string, error) {
@@ -56,10 +62,10 @@ func AdminPolicies(access []string) ([]string, error) {
 	return out, nil
 }
 
-func ValidateAdminBindings(bindings []AdminBinding) error {
+func ValidateAdminConfig(cfg AdminConfig) error {
 	names := map[string]bool{}
 	principals := map[string]string{}
-	for _, b := range bindings {
+	for _, b := range cfg.Bindings {
 		if !adminRoleName.MatchString(b.Name) {
 			return fmt.Errorf("invalid admin role name %q", b.Name)
 		}
@@ -67,42 +73,84 @@ func ValidateAdminBindings(bindings []AdminBinding) error {
 			return fmt.Errorf("duplicate admin role %q", b.Name)
 		}
 		names[b.Name] = true
-		if !adminPrincipalARN.MatchString(b.PrincipalARN) {
-			return fmt.Errorf("%s: principal_arn must be an IAM user or role ARN", b.Name)
+		auth, ok := adminAuths[b.Method]
+		if !ok {
+			return fmt.Errorf("%s: unknown method %q (%s)", b.Name, b.Method, strings.Join(AdminMethods(), ", "))
 		}
-		if other, ok := principals[b.PrincipalARN]; ok {
+		if err := auth.validatePrincipal(b.Principal); err != nil {
+			return fmt.Errorf("%s: %w", b.Name, err)
+		}
+		key := b.Method + "\x00" + b.Principal
+		if other, ok := principals[key]; ok {
 			return fmt.Errorf("%s: principal is already bound to %s", b.Name, other)
 		}
-		principals[b.PrincipalARN] = b.Name
+		principals[key] = b.Name
 		if _, err := AdminPolicies(b.Access); err != nil {
 			return fmt.Errorf("%s: %w", b.Name, err)
 		}
+		if b.Method == "oidc" && cfg.OIDC == nil {
+			return fmt.Errorf("%s: oidc bindings need the oidc settings", b.Name)
+		}
+	}
+	if cfg.OIDC != nil {
+		return cfg.OIDC.validate()
 	}
 	return nil
 }
 
-func LoadAdminBindings(path string) ([]AdminBinding, error) {
+func LoadAdminConfig(path string) (AdminConfig, error) {
+	var cfg AdminConfig
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return cfg, err
 	}
-	var bindings []AdminBinding
-	if err := json.Unmarshal(raw, &bindings); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cfg); err != nil {
+		return cfg, fmt.Errorf("parse %s: %w", path, err)
 	}
-	return bindings, ValidateAdminBindings(bindings)
+	return cfg, ValidateAdminConfig(cfg)
 }
 
-// ReconcileAdmins makes the admin-* AWS auth roles match bindings: writes each, deletes the rest.
-// One principal maps to one role across the whole mount. A failed binding does not stop the others.
-func (c *Client) ReconcileAdmins(bindings []AdminBinding) error {
-	if err := ValidateAdminBindings(bindings); err != nil {
+// ReconcileAdmins makes the admin-* roles on every supported auth mount match cfg: writes each binding,
+// deletes the rest. A mount with no bindings is left disabled, or emptied of admin-* roles if enabled.
+// One principal maps to one role per mount. A failed binding does not stop the others.
+func (c *Client) ReconcileAdmins(cfg AdminConfig) error {
+	if err := ValidateAdminConfig(cfg); err != nil {
 		return err
 	}
-	if err := c.enableAWSAuth(); err != nil {
+	enabled, err := c.enabledAuthMounts()
+	if err != nil {
 		return err
 	}
-	bound, err := c.awsRoleBindings()
+	var errs []error
+	for _, method := range AdminMethods() {
+		var bindings []AdminBinding
+		for _, b := range cfg.Bindings {
+			if b.Method == method {
+				bindings = append(bindings, b)
+			}
+		}
+		if len(bindings) == 0 && !enabled[method] {
+			continue
+		}
+		if err := c.reconcileAdminMount(method, adminAuths[method], bindings, cfg); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (c *Client) reconcileAdminMount(method string, auth adminAuth, bindings []AdminBinding, cfg AdminConfig) error {
+	if len(bindings) > 0 {
+		if err := c.enableAuthMount(method); err != nil {
+			return err
+		}
+		if err := auth.configure(c, cfg); err != nil {
+			return fmt.Errorf("%s: %w", method, err)
+		}
+	}
+	bound, err := c.authRoleBindings(method, auth)
 	if err != nil {
 		return err
 	}
@@ -114,44 +162,42 @@ func (c *Client) ReconcileAdmins(bindings []AdminBinding) error {
 	var errs []error
 	for role := range bound {
 		if strings.HasPrefix(role, AdminRolePrefix) && !desired[role] {
-			if err := c.deleteMissingOK("auth/aws/role/" + role); err != nil {
+			if err := c.deleteMissingOK("auth/" + method + "/role/" + role); err != nil {
 				errs = append(errs, err)
 				continue
 			}
 			delete(bound, role)
-			log.Printf("removed admin role %s", role)
+			log.Printf("removed %s admin role %s", method, role)
 		}
 	}
 	for _, b := range bindings {
-		if other := boundElsewhere(bound, b.Name, b.PrincipalARN); other != "" {
-			errs = append(errs, fmt.Errorf("%s: principal is already bound to vault role %s", b.Name, other))
+		if other := boundElsewhere(bound, b.Name, b.Principal); other != "" {
+			errs = append(errs, fmt.Errorf("%s: principal is already bound to %s role %s", b.Name, method, other))
 			continue
 		}
 		policies, _ := AdminPolicies(b.Access)
-		if _, err := c.Must("POST", "auth/aws/role/"+b.Name, map[string]any{
-			"auth_type":               "iam",
-			"bound_iam_principal_arn": []string{b.PrincipalARN},
-			"token_policies":          policies,
-			"token_ttl":               AdminTokenTTL,
-			"token_max_ttl":           AdminTokenMaxTTL,
-			"token_type":              "service",
-		}); err != nil {
+		body := auth.roleBody(b, cfg)
+		body["token_policies"] = policies
+		body["token_ttl"] = AdminTokenTTL
+		body["token_max_ttl"] = AdminTokenMaxTTL
+		body["token_type"] = "service"
+		if _, err := c.Must("POST", "auth/"+method+"/role/"+b.Name, body); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", b.Name, err))
 			continue
 		}
-		bound[b.Name] = []string{b.PrincipalARN}
-		log.Printf("wrote admin role %s (%s)", b.Name, strings.Join(policies, ", "))
+		bound[b.Name] = []string{b.Principal}
+		log.Printf("wrote %s admin role %s (%s)", method, b.Name, strings.Join(policies, ", "))
 	}
 	return errors.Join(errs...)
 }
 
 func boundElsewhere(bound map[string][]string, role, principal string) string {
-	for other, arns := range bound {
+	for other, principals := range bound {
 		if other == role {
 			continue
 		}
-		for _, arn := range arns {
-			if arn == principal {
+		for _, p := range principals {
+			if p == principal {
 				return other
 			}
 		}
@@ -159,20 +205,38 @@ func boundElsewhere(bound map[string][]string, role, principal string) string {
 	return ""
 }
 
-func (c *Client) enableAWSAuth() error {
-	r, err := c.Do("POST", "sys/auth/aws", map[string]string{"type": "aws"})
+func (c *Client) enabledAuthMounts() (map[string]bool, error) {
+	r, err := c.Must("GET", "sys/auth", nil)
+	if err != nil {
+		return nil, err
+	}
+	var wrap struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(r.Body, &wrap); err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for path := range wrap.Data {
+		out[strings.TrimSuffix(path, "/")] = true
+	}
+	return out, nil
+}
+
+func (c *Client) enableAuthMount(method string) error {
+	r, err := c.Do("POST", "sys/auth/"+method, map[string]string{"type": method})
 	if err != nil && r.Status == 0 {
 		return err
 	}
 	if r.Status >= 400 && !strings.Contains(string(r.Body), "already in use") {
-		return fmt.Errorf("enable aws auth failed (HTTP %d)", r.Status)
+		return fmt.Errorf("enable %s auth failed (HTTP %d)", method, r.Status)
 	}
 	return nil
 }
 
-func (c *Client) awsRoleBindings() (map[string][]string, error) {
+func (c *Client) authRoleBindings(method string, auth adminAuth) (map[string][]string, error) {
 	out := map[string][]string{}
-	r, err := c.Do("LIST", "auth/aws/role", nil)
+	r, err := c.Do("LIST", "auth/"+method+"/role", nil)
 	if err != nil && r.Status == 0 {
 		return nil, err
 	}
@@ -180,7 +244,7 @@ func (c *Client) awsRoleBindings() (map[string][]string, error) {
 		return out, nil
 	}
 	if r.Status >= 300 {
-		return nil, fmt.Errorf("list aws auth roles failed (HTTP %d)", r.Status)
+		return nil, fmt.Errorf("list %s auth roles failed (HTTP %d)", method, r.Status)
 	}
 	var listed struct {
 		Data struct {
@@ -191,19 +255,21 @@ func (c *Client) awsRoleBindings() (map[string][]string, error) {
 		return nil, err
 	}
 	for _, key := range listed.Data.Keys {
-		res, err := c.Must("GET", "auth/aws/role/"+key, nil)
+		res, err := c.Must("GET", "auth/"+method+"/role/"+key, nil)
 		if err != nil {
 			return nil, err
 		}
 		var role struct {
-			Data struct {
-				Bound []string `json:"bound_iam_principal_arn"`
-			} `json:"data"`
+			Data json.RawMessage `json:"data"`
 		}
 		if err := json.Unmarshal(res.Body, &role); err != nil {
 			return nil, err
 		}
-		out[key] = role.Data.Bound
+		principals, err := auth.boundPrincipals(role.Data, key)
+		if err != nil {
+			return nil, fmt.Errorf("%s role %s: %w", method, key, err)
+		}
+		out[key] = principals
 	}
 	return out, nil
 }

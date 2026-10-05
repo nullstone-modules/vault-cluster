@@ -83,6 +83,14 @@ func (c *Client) RunBootstrap(store KeyStore, opts BootstrapOptions) error {
 		}
 	}
 
+	// Optional: a store without a slot for it (older cluster modules) skips admin reconcile with it.
+	if tok, err := c.issueOrphanToken("admin-auth"); err != nil {
+		return err
+	} else if err := store.SaveToken("admin-auth", tok); err != nil {
+		log.Printf("admin-auth token not stored: %v", err)
+		_ = c.API.Auth().Token().RevokeTree(tok)
+	}
+
 	if opts.KeepRoot {
 		log.Printf("keeping the root token active")
 		return nil

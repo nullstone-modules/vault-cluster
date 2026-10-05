@@ -12,17 +12,19 @@ locals {
   # AWS appends 26 characters to name_prefix; 38 + 26 keeps role names within IAM's 64-character limit.
   admin_role_prefixes = { for level in local.admin_access_levels : level => "${trimsuffix(substr(local.resource_name, 0, 38 - length("-admin-${level}-")), "-")}-admin-${level}-" }
 
-  # Nodes write these as admin-* AWS auth roles at boot and remove any admin-* role not listed.
+  # The cloud-neutral admin file (VAULT_ADMINS_FILE). Nodes write these as admin-* roles at boot and remove any not listed.
   admin_bindings = concat(
     [for level in sort(tolist(local.admin_access_levels)) : {
-      name          = "admin-${level}"
-      principal_arn = aws_iam_role.admin[level].arn
-      access        = [level]
+      name      = "admin-${level}"
+      method    = "aws"
+      principal = aws_iam_role.admin[level].arn
+      access    = [level]
     }],
     [for key in sort(keys(var.admin_principals)) : {
-      name          = "admin-${key}"
-      principal_arn = var.admin_principals[key].principal_arn
-      access        = sort(distinct(var.admin_principals[key].access))
+      name      = "admin-${key}"
+      method    = "aws"
+      principal = var.admin_principals[key].principal_arn
+      access    = sort(distinct(var.admin_principals[key].access))
     }],
   )
 }
