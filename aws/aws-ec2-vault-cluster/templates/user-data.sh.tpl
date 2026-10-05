@@ -19,4 +19,10 @@ UNSEAL_KMS_KEY_ARN=${unseal_kms_key_arn}
 VAULT_CLUSTER_TAG_KEY=${vault_cluster_tag_key}
 VAULT_CLUSTER_TAG_VALUE=${vault_cluster_tag_value}
 VAULT_API_ADDR=${vault_api_addr}
+VAULT_ADMINS_FILE=/etc/vault.d/admins.json
 ENV
+
+install -m 0640 -o vault -g vault /dev/null /etc/vault.d/admins.json
+cat >/etc/vault.d/admins.json <<'JSON'
+${admins_json}
+JSON

@@ -14,6 +14,9 @@ import (
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster"
 )
 
+// Set by -ldflags "-X main.version=...".
+var version = "dev"
+
 // Well inside the 24h token period, so a run of failed renewals is survivable.
 const tokenRenewInterval = time.Hour
 
@@ -42,6 +45,11 @@ Commands:
   snapshot schedule                 Cron loop (BACKUP_SCHEDULE; empty disables)
   health                            Print seal status
   health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
+  admins reconcile                  Write admin-* AWS auth roles from VAULT_ADMINS_FILE; remove the rest
+  env --org --stack --env --block   Print shell settings for a Nullstone Vault cluster workspace
+  version
+
+Without VAULT_TOKEN, tenants, snapshot take|restore, and health use the token from "vault login".
 
 Local key material: BOOTSTRAP_DIR (default .bootstrap).
 AWS: VAULT_INIT_SECRET_ARN, VAULT_PROVISIONING_SECRET_ARN, VAULT_OPERATOR_SECRET_ARN.
@@ -50,7 +58,21 @@ Optional: SNAPSHOT_BUCKET, SNAPSHOT_PREFIX (default vault-snapshots).
 }
 
 func run(cmd string, args []string) error {
+	switch cmd {
+	case "version":
+		fmt.Println(version)
+		return nil
+	case "env":
+		return runEnv(args)
+	}
 	cfg := vaultcluster.ConfigFromEnv()
+	if cfg.Token == "" && usesLoginToken(cmd, args) {
+		tok, err := vaultcluster.HelperToken()
+		if err != nil {
+			return err
+		}
+		cfg.Token = tok
+	}
 	c, err := vaultcluster.New(cfg)
 	if err != nil {
 		return err
@@ -62,6 +84,8 @@ func run(cmd string, args []string) error {
 		return runTenants(c, args)
 	case "snapshot":
 		return runSnapshot(c, args)
+	case "admins":
+		return runAdmins(c, args)
 	case "health":
 		if len(args) > 0 && args[0] == "serve" {
 			return runHealthServe(c)
@@ -100,13 +124,20 @@ func runBootstrap(c *vaultcluster.Client, args []string) error {
 		}
 		shares, _ := strconv.Atoi(getenv("VAULT_INIT_RECOVERY_SHARES", "1"))
 		threshold, _ := strconv.Atoi(getenv("VAULT_INIT_RECOVERY_THRESHOLD", "1"))
-		return c.RunBootstrap(store, vaultcluster.BootstrapOptions{
+		if err := c.RunBootstrap(store, vaultcluster.BootstrapOptions{
 			Shares:     shares,
 			Threshold:  threshold,
 			KeepRoot:   getenv("KEEP_ROOT", "false") == "true",
 			AutoUnseal: true,
 			ClaimInit:  awsClaimInit,
-		})
+		}); err != nil {
+			return err
+		}
+		// A bad admin binding must not keep the node out of service; it is logged and retried on the next boot.
+		if err := reconcileAdmins(c, store); err != nil {
+			log.Printf("admin reconcile: %v", err)
+		}
+		return nil
 	case "azure", "gcp":
 		return fmt.Errorf("bootstrap %s is not implemented yet", platform)
 	default:
@@ -266,6 +297,7 @@ func runHealthServe(c *vaultcluster.Client) error {
 		return err
 	}
 	go c.RenewToken(tokenRenewInterval, nil)
+	renewPlatformTokens(c)
 	addr := getenv("VAULT_HEALTH_ADDR", ":8210")
 	log.Printf("health listening on %s", addr)
 	return c.ServeHealth(addr, nodeID)
@@ -322,6 +354,23 @@ func restoreSnapshot(c *vaultcluster.Client, ref string) error {
 		return c.SnapshotRestoreData(b)
 	}
 	return c.SnapshotRestore(ref)
+}
+
+// usesLoginToken lists commands a human runs after `vault login`. Node services keep their platform tokens.
+func usesLoginToken(cmd string, args []string) bool {
+	sub := ""
+	if len(args) > 0 {
+		sub = args[0]
+	}
+	switch cmd {
+	case "tenants":
+		return true
+	case "snapshot":
+		return sub == "take" || sub == "restore"
+	case "health":
+		return sub != "serve"
+	}
+	return false
 }
 
 func useOperatorToken(c *vaultcluster.Client) error {
