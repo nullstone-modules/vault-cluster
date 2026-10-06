@@ -3,6 +3,7 @@ package vaultcluster
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -36,8 +37,9 @@ func TestLintFixtures(t *testing.T) {
 
 func TestRenderAndLintPlatformPolicies(t *testing.T) {
 	cfg := Config{KVMount: "kv", TenantPrefix: "customers", DatabaseMount: "database", AuthMount: "approle"}
-	for _, name := range []string{"provisioning", "operator", "apps-auth"} {
-		hcl, err := RenderPolicy(name, "", cfg)
+	acc := TenantAccessors{Reader: "auth_approle_1a2b3c4d", Writer: "auth_approle_5e6f7a8b"}
+	for _, name := range []string{"provisioning", "operator", "apps-auth", "apps-reader", "apps-writer"} {
+		hcl, err := RenderPolicy(name, cfg, acc)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,14 +55,36 @@ func TestRenderAndLintPlatformPolicies(t *testing.T) {
 			}
 		}
 	}
-	for _, tmpl := range []string{"tenant-reader", "tenant-writer", "tenant-database"} {
-		hcl, err := RenderPolicy(tmpl, "tenant-a", cfg)
+	for _, name := range []string{"tenant-reader", "tenant-writer", "tenant-database"} {
+		hcl, err := RenderPolicy(name, cfg, acc)
 		if err != nil {
 			t.Fatal(err)
 		}
-		name := "tenant-tenant-a-" + strings.TrimPrefix(tmpl, "tenant-")
 		if err := LintOrError(name, hcl, cfg); err != nil {
 			t.Fatal(err)
+		}
+		want := "{{identity.entity.aliases." + acc.Reader + ".metadata.role_name}}"
+		if name != "tenant-reader" {
+			want = "{{identity.entity.aliases." + acc.Writer + ".metadata.role_name}}"
+		}
+		if !strings.Contains(hcl, want) {
+			t.Fatalf("%s must scope to the login role name %s:\n%s", name, want, hcl)
+		}
+	}
+	if _, err := RenderPolicy("tenant-reader", cfg, TenantAccessors{}); err == nil {
+		t.Fatal("tenant policies must not render without mount accessors")
+	}
+
+	prov, err := RenderPolicy("provisioning", cfg, acc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(prov, "sys/policies/acl/tenant") {
+		t.Fatal("provisioning must not write policies")
+	}
+	for _, s := range dbCreationStatements() {
+		if !strings.Contains(prov, strconv.Quote(s)) {
+			t.Fatalf("provisioning must pin creation statement %q", s)
 		}
 	}
 }

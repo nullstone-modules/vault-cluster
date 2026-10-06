@@ -155,7 +155,7 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 | `docker compose up -d --build` | no | Start, init (first time), unseal, configure |
 | `docker compose down` | no | Stop containers. Keeps all data. |
 | `docker compose down --volumes --remove-orphans && rm -rf .bootstrap` | yes | Destroys volumes and unseal keys |
-| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants create <id>` | no | Onboard a tenant |
+| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants create <id>` | no | Onboard a tenant (no credentials printed) |
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants destroy <id> --yes` | yes (access) | Revoke access; secrets kept |
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants destroy <id> --yes --purge-secrets` | yes | Also destroy secret versions |
 | `docker compose run --rm bootstrap snapshot take` | no | Raft snapshot plus SHA-256 |
@@ -167,6 +167,8 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 
 ## Tenant isolation
 
+An app never holds a token that spans tenants. It logs in with its cloud identity and gets a broker token (`apps-reader` or `apps-writer`). For each request it logs in again as one tenant on the matching AppRole mount; that tenant token sees one path prefix and expires after 15 minutes.
+
 Paths (KV v2 requires `data/` and `metadata/`):
 
 ```
@@ -175,6 +177,12 @@ kv/metadata/customers/{tenant_id}/*
 ```
 
 `kv/customers/...` matches nothing.
+
+| Piece | Name | Purpose |
+|---|---|---|
+| AppRole mounts | `approle-reader`, `approle-writer` | One role per tenant, named by the tenant ID. Tokens last 15 minutes and cannot be renewed past that. Secret IDs last 60 seconds and work once. |
+| Tenant policies | `tenant-reader`, `tenant-writer`, `tenant-database` | Static, written at bootstrap. The tenant comes from the login role name (`{{identity.entity.aliases.<accessor>.metadata.role_name}}`), so nothing is written per tenant. |
+| Broker policies | `apps-reader`, `apps-writer` | Read `role-id` and mint `secret-id` for any onboarded tenant on one mount. No KV, database, or sys access. |
 
 Tenant IDs: `^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$` (3-32 characters). Rejected: `/`, `..`, `*`, `sys`, `data`, `root`, and similar reserved names.
 
@@ -216,8 +224,9 @@ Cross-tenant, wildcard, and traversal reads return HTTP 403. That is the isolati
 | Identity | Role |
 |---|---|
 | Root | Bootstrap only. Revoked when setup finishes. |
-| Provisioning | Create and offboard tenants. Cannot read tenant secrets. |
-| Tenant AppRole | One reader and one writer per tenant. |
+| Provisioning | Create and offboard tenants by writing AppRole and database roles. Cannot write policies; a role can carry only the static tenant policies. Can mint tenant logins, but cannot read tenant secrets with its own token. |
+| App broker | `apps-reader` or `apps-writer`, from the app's cloud login. Mints one-tenant logins at its level. Reads nothing itself. |
+| Tenant token | One tenant, one level, 15 minutes. The result of a login on `approle-reader` or `approle-writer`. |
 | Operator | Health, mounts, snapshots. Can start generate-root (recovery keys still required). Not a tenant secret reader. Cannot restore. |
 | Apps auth | Held by the cluster function. Writes app auth roles on the `aws` and `gcp` mounts (`apps-auth` policy). Cannot read tenant secrets. |
 
@@ -415,15 +424,19 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 
 Connect `vault` to the cluster. The app module must expose `security_group_id` and its IAM role name.
 
-`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`, and `VAULT_TLS_SERVER_NAME` (empty unless the NLB terminates TLS). During apply the capability calls the cluster function with `method = "aws"` and the app IAM role ARN; the function binds only that principal to that role. The same function serves GCP service accounts (`method = "gcp"`) for a future GCP cluster module.
+`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. `access` is `reader` (default) or `writer`; the capability binds the matching broker policy (`apps-reader` or `apps-writer`) and nothing else. The app receives `VAULT_ADDR`, `VAULT_ROLE`, `VAULT_TLS_SERVER_NAME` (empty unless the NLB terminates TLS), and `VAULT_TENANT_MOUNT`. During apply the capability calls the cluster function with `method = "aws"` and the app IAM role ARN; the function binds only that principal to that role. The same function serves GCP service accounts (`method = "gcp"`) for a future GCP cluster module.
 
-The app does not receive a Vault token. At startup it logs in with its IAM role:
+The app does not receive a Vault token. At startup it logs in with its IAM role, then for every request it logs in again as one tenant:
 
 ```bash
 vault login -method=aws role="$VAULT_ROLE"
+
+ROLE_ID=$(vault read -field=role_id auth/$VAULT_TENANT_MOUNT/role/$TENANT/role-id)
+SECRET_ID=$(vault write -f -field=secret_id auth/$VAULT_TENANT_MOUNT/role/$TENANT/secret-id)
+TENANT_TOKEN=$(vault write -field=token auth/$VAULT_TENANT_MOUNT/login role_id=$ROLE_ID secret_id=$SECRET_ID)
 ```
 
-A login as any other role is denied. The operator token is not injected.
+The broker token reads no secrets. The tenant token is good for that tenant only, for 15 minutes. A login as any other role is denied. The operator token is not injected.
 
 ## Security
 
@@ -434,7 +447,8 @@ A login as any other role is denied. The operator token is not injected.
 - Unseal keys, tokens, and `.env` are gitignored (mode 600). Never printed to logs
 - AWS platform secrets (`init`, `provisioning`, `operator`, `apps-auth`) have `prevent_destroy` (var `protect_platform_secrets`, default true) and a 30-day recovery window. Set the var to false before destroying the workspace.
 - Audit values are HMAC'd. Raw secrets must not appear in the audit log
-- Provisioning cannot read tenant KV
+- Provisioning cannot read tenant KV with its own token, write policies, or attach anything but the static tenant policies to a role (`allowed_parameters`)
+- Apps hold no tenant access directly: a broker token mints a 15-minute, one-tenant token per login
 - Operator cannot read tenant KV
 - Local Compose sets `disable_mlock = true` because Docker and GitHub Actions cannot mlock. Production hosts should use `IPC_LOCK`
 - Dynamic credentials (Go library and tests only): bounded TTL, revoke drops the Postgres role, residue scan expects zero leftover `v-*` roles

@@ -11,6 +11,10 @@ output "env" {
     {
       name  = "VAULT_TLS_SERVER_NAME"
       value = local.tls_server_name
+    },
+    {
+      name  = "VAULT_TENANT_MOUNT"
+      value = local.tenant_mount
     }
   ]
 }

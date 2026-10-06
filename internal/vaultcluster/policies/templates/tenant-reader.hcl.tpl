@@ -1,9 +1,10 @@
-# Read-only on one tenant. KV v2 needs data/ and metadata/; kv/{prefix}/{id} matches nothing.
-path "{{.KVMount}}/data/{{.TenantPrefix}}/{{.TenantID}}/*" {
+# Read-only on the tenant named by the caller's AppRole role ({{.ReaderMount}} mount; role name = tenant ID). Static: written once at bootstrap.
+# KV v2 needs data/ and metadata/; a token without a {{.ReaderMount}} alias renders no tenant path.
+path "{{.KVMount}}/data/{{.TenantPrefix}}/{{.ReaderTenant}}/*" {
   capabilities = ["read"]
 }
 
-path "{{.KVMount}}/metadata/{{.TenantPrefix}}/{{.TenantID}}/*" {
+path "{{.KVMount}}/metadata/{{.TenantPrefix}}/{{.ReaderTenant}}/*" {
   capabilities = ["read", "list"]
 }
 
@@ -43,7 +44,11 @@ path "auth/token/create*" {
   capabilities = ["deny"]
 }
 
-path "auth/{{.AuthMount}}/role/*" {
+path "auth/{{.ReaderMount}}/role/*" {
+  capabilities = ["deny"]
+}
+
+path "auth/{{.WriterMount}}/role/*" {
   capabilities = ["deny"]
 }
 

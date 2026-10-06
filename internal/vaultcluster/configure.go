@@ -18,11 +18,12 @@ func (c *Client) Configure() error {
 	if err := c.mountKV(); err != nil {
 		return err
 	}
-	if err := c.enableAppRole(); err != nil {
+	acc, err := c.enableTenantAppRoles()
+	if err != nil {
 		return err
 	}
-	for _, name := range []string{"provisioning", "operator", "apps-auth"} {
-		hcl, err := RenderPolicy(name, "", c.Cfg)
+	for _, name := range []string{"provisioning", "operator", "apps-auth", "apps-reader", "apps-writer", "tenant-reader", "tenant-writer", "tenant-database"} {
+		hcl, err := RenderPolicy(name, c.Cfg, acc)
 		if err != nil {
 			return err
 		}
@@ -107,23 +108,43 @@ func (c *Client) mountKV() error {
 	return err
 }
 
-func (c *Client) enableAppRole() error {
-	auths, err := c.API.Sys().ListAuth()
-	if err != nil {
-		return err
-	}
-	if _, ok := auths[c.Cfg.AuthMount+"/"]; !ok {
-		if err := c.API.Sys().EnableAuthWithOptions(c.Cfg.AuthMount, &api.EnableAuthOptions{
-			Type:        "approle",
-			Description: "Tenant workload identities",
+// enableTenantAppRoles mounts one AppRole backend per tenant access kind and returns their accessors.
+func (c *Client) enableTenantAppRoles() (TenantAccessors, error) {
+	var acc TenantAccessors
+	for _, kind := range []string{"reader", "writer"} {
+		mount := c.Cfg.TenantMount(kind)
+		auths, err := c.API.Sys().ListAuth()
+		if err != nil {
+			return acc, err
+		}
+		if _, ok := auths[mount+"/"]; !ok {
+			if err := c.API.Sys().EnableAuthWithOptions(mount, &api.EnableAuthOptions{
+				Type:        "approle",
+				Description: "Tenant " + kind + " identities (role name = tenant ID)",
+			}); err != nil {
+				return acc, err
+			}
+			if auths, err = c.API.Sys().ListAuth(); err != nil {
+				return acc, err
+			}
+		}
+		if err := c.API.Sys().TuneMount("auth/"+mount, api.MountConfigInput{
+			DefaultLeaseTTL: c.Cfg.TokenTTL,
+			MaxLeaseTTL:     c.Cfg.TokenMaxTTL,
 		}); err != nil {
-			return err
+			return acc, err
+		}
+		a := auths[mount+"/"]
+		if a == nil || a.Accessor == "" {
+			return acc, fmt.Errorf("auth mount %s has no accessor", mount)
+		}
+		if kind == "reader" {
+			acc.Reader = a.Accessor
+		} else {
+			acc.Writer = a.Accessor
 		}
 	}
-	return c.API.Sys().TuneMount("auth/"+c.Cfg.AuthMount, api.MountConfigInput{
-		DefaultLeaseTTL: c.Cfg.TokenTTL,
-		MaxLeaseTTL:     c.Cfg.TokenMaxTTL,
-	})
+	return acc, nil
 }
 
 func (c *Client) mountDatabase() error {

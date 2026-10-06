@@ -143,7 +143,7 @@ func runTenants(c *vaultcluster.Client, args []string) error {
 		if id == "" {
 			return fmt.Errorf("usage: vault-utils tenants create <id>")
 		}
-		return c.CreateTenant(id, true)
+		return c.CreateTenant(id)
 	case "destroy":
 		yes, purge := false, false
 		id := ""

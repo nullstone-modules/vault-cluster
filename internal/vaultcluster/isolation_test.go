@@ -17,26 +17,26 @@ func TestIsolationMatrix(t *testing.T) {
 	if err := c.Configure(); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateTenant("tenant-a", false); err != nil {
+	if err := c.CreateTenant("tenant-a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateTenant("tenant-b", false); err != nil {
+	if err := c.CreateTenant("tenant-b"); err != nil {
 		t.Fatal(err)
 	}
 
-	tokA, err := c.LoginAppRole(c.Cfg.TenantRole("reader", "tenant-a"))
+	tokA, err := c.LoginAppRole(c.Cfg.TenantMount("reader"), "tenant-a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tokB, err := c.LoginAppRole(c.Cfg.TenantRole("reader", "tenant-b"))
+	tokB, err := c.LoginAppRole(c.Cfg.TenantMount("reader"), "tenant-b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tokAW, err := c.LoginAppRole(c.Cfg.TenantRole("writer", "tenant-a"))
+	tokAW, err := c.LoginAppRole(c.Cfg.TenantMount("writer"), "tenant-a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tokBW, err := c.LoginAppRole(c.Cfg.TenantRole("writer", "tenant-b"))
+	tokBW, err := c.LoginAppRole(c.Cfg.TenantMount("writer"), "tenant-b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,13 +126,16 @@ func TestIsolationMatrix(t *testing.T) {
 	deny(tokAW, "DELETE", "sys/mounts/"+c.Cfg.KVMount, nil)
 	deny(tokA, "GET", "sys/audit", nil)
 	deny(tokA, "GET", "sys/policies/acl?list=true", nil)
-	deny(tokA, "GET", "sys/policies/acl/"+c.Cfg.TenantPolicy("reader", "tenant-b"), nil)
-	deny(tokAW, "PUT", "sys/policies/acl/"+c.Cfg.TenantPolicy("reader", "tenant-a"), map[string]any{
+	deny(tokA, "GET", "sys/policies/acl/"+c.Cfg.TenantPolicy("reader"), nil)
+	deny(tokAW, "PUT", "sys/policies/acl/"+c.Cfg.TenantPolicy("writer"), map[string]any{
 		"policy": `path "kv/data/*" { capabilities = ["read", "list"] }`,
 	})
-	deny(tokA, "GET", "auth/"+c.Cfg.AuthMount+"/role?list=true", nil)
-	deny(tokA, "GET", "auth/"+c.Cfg.AuthMount+"/role/"+c.Cfg.TenantRole("reader", "tenant-b")+"/role-id", nil)
-	deny(tokAW, "POST", "auth/"+c.Cfg.AuthMount+"/role/"+c.Cfg.TenantRole("reader", "tenant-b")+"/secret-id", map[string]any{})
+	for _, kind := range []string{"reader", "writer"} {
+		deny(tokA, "GET", "auth/"+c.Cfg.TenantMount(kind)+"/role?list=true", nil)
+		deny(tokA, "GET", "auth/"+c.Cfg.TenantMount(kind)+"/role/tenant-b/role-id", nil)
+		deny(tokAW, "POST", "auth/"+c.Cfg.TenantMount(kind)+"/role/tenant-b/secret-id", map[string]any{})
+		deny(tokAW, "POST", "auth/"+c.Cfg.TenantMount(kind)+"/role/tenant-a/secret-id", map[string]any{"metadata": `{"role_name":"tenant-b"}`})
+	}
 	deny(tokAW, "POST", "auth/token/create", map[string]any{"policies": []string{"operator"}})
 	deny(tokA, "GET", "auth/token/accessors?list=true", nil)
 
@@ -142,7 +145,29 @@ func TestIsolationMatrix(t *testing.T) {
 	deny(tokProv, "PUT", "sys/policies/acl/provisioning", map[string]any{
 		"policy": `path "kv/data/*" { capabilities = ["read"] }`,
 	})
-	assertStatus(tokProv, "GET", "auth/"+c.Cfg.AuthMount+"/role/"+c.Cfg.TenantRole("reader", "tenant-a")+"/role-id", nil, 200)
+	deny(tokProv, "PUT", "sys/policies/acl/tenant-reader", map[string]any{
+		"policy": `path "kv/data/*" { capabilities = ["read"] }`,
+	})
+	deny(tokProv, "POST", "auth/"+c.Cfg.TenantMount("reader")+"/role/tenant-a", map[string]any{"token_policies": []string{"tenant-writer"}})
+	assertStatus(tokProv, "GET", "auth/"+c.Cfg.TenantMount("reader")+"/role/tenant-a/role-id", nil, 200)
+
+	// role_name always comes from the role; secret ID metadata cannot point a login at another tenant.
+	spoofSec, err := c.WithToken(tokProv).API.Logical().Write("auth/"+c.Cfg.TenantMount("reader")+"/role/tenant-a/secret-id", map[string]any{"metadata": `{"role_name":"tenant-b"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	roleID, err := c.API.Logical().Read("auth/" + c.Cfg.TenantMount("reader") + "/role/tenant-a/role-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spoof, err := c.API.Logical().Write("auth/"+c.Cfg.TenantMount("reader")+"/login", map[string]any{
+		"role_id": roleID.Data["role_id"], "secret_id": spoofSec.Data["secret_id"],
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStatus(spoof.Auth.ClientToken, "GET", aData, nil, 200)
+	deny(spoof.Auth.ClientToken, "GET", bData, nil)
 
 	for _, traversal := range []string{
 		fmt.Sprintf("%s/data/%s/tenant-a/../tenant-b/fixture", c.Cfg.KVMount, c.Cfg.TenantPrefix),
@@ -161,7 +186,7 @@ func TestIsolationMatrix(t *testing.T) {
 	if err := c.OffboardTenant("tenant-a", false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.LoginAppRole(c.Cfg.TenantRole("reader", "tenant-a")); err == nil {
+	if _, err := c.LoginAppRole(c.Cfg.TenantMount("reader"), "tenant-a"); err == nil {
 		t.Fatal("expected AppRole login to fail after offboard")
 	}
 }

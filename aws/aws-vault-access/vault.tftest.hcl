@@ -33,13 +33,18 @@ run "injects_the_capability_role" {
   }
 
   assert {
-    condition     = output.env == [{ name = "VAULT_ADDR", value = "http://vault.internal:8200" }, { name = "VAULT_ROLE", value = "billing" }, { name = "VAULT_TLS_SERVER_NAME", value = "" }]
-    error_message = "The app must receive VAULT_ADDR, the capability role, and an empty TLS name without TLS."
+    condition     = output.env == [{ name = "VAULT_ADDR", value = "http://vault.internal:8200" }, { name = "VAULT_ROLE", value = "billing" }, { name = "VAULT_TLS_SERVER_NAME", value = "" }, { name = "VAULT_TENANT_MOUNT", value = "approle-reader" }]
+    error_message = "The app must receive VAULT_ADDR, the capability role, an empty TLS name without TLS, and its tenant mount."
   }
 
   assert {
     condition     = jsondecode(aws_lambda_invocation.vault_role.input).data.principal == "arn:aws:iam::123456789012:role/app"
     error_message = "The function must bind only the app IAM role."
+  }
+
+  assert {
+    condition     = jsondecode(aws_lambda_invocation.vault_role.input).data.policies == ["apps-reader"]
+    error_message = "A reader app gets only the apps-reader broker policy."
   }
 
   assert {
@@ -70,11 +75,36 @@ run "uses_the_cluster_port" {
   }
 }
 
-run "rejects_platform_policy" {
+run "writer_access_selects_the_writer_mount" {
   command = plan
 
   variables {
-    policies = ["operator"]
+    access = "writer"
+  }
+
+  override_data {
+    target = data.ns_connection.vault
+    values = {
+      outputs = {
+        vault_fqdn            = "vault.internal"
+        nlb_security_group_id = "sg-nlb"
+        vault_api_port        = "8200"
+        admin_function_name   = "vault-aws-auth"
+      }
+    }
+  }
+
+  assert {
+    condition     = jsondecode(aws_lambda_invocation.vault_role.input).data.policies == ["apps-writer"] && output.env[3].value == "approle-writer"
+    error_message = "A writer app gets apps-writer and logs in on approle-writer."
+  }
+}
+
+run "rejects_unknown_access" {
+  command = plan
+
+  variables {
+    access = "operator"
   }
 
   override_data {
@@ -91,7 +121,7 @@ run "rejects_platform_policy" {
   }
 
   expect_failures = [
-    var.policies,
+    var.access,
   ]
 }
 
@@ -142,6 +172,7 @@ run "uses_the_cluster_addr_and_tls_name" {
       { name = "VAULT_ADDR", value = "https://vault.internal:8200" },
       { name = "VAULT_ROLE", value = "billing" },
       { name = "VAULT_TLS_SERVER_NAME", value = "vault.acme.example.com" },
+      { name = "VAULT_TENANT_MOUNT", value = "approle-reader" },
     ]
     error_message = "A TLS cluster must give the app its https address and the certificate name."
   }
