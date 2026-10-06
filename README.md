@@ -156,6 +156,7 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 | `docker compose down` | no | Stop containers. Keeps all data. |
 | `docker compose down --volumes --remove-orphans && rm -rf .bootstrap` | yes | Destroys volumes and unseal keys |
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants create <id>` | no | Onboard a tenant (no credentials printed) |
+| `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants list` | no | List tenants; flags one missing a reader or writer role |
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants destroy <id> --yes` | yes (access) | Revoke access; secrets kept |
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants destroy <id> --yes --purge-secrets` | yes | Also destroy secret versions |
 | `docker compose run --rm bootstrap snapshot take` | no | Raft snapshot plus SHA-256 |
@@ -193,14 +194,16 @@ cd local
 docker compose run --rm -e VAULT_TOKEN bootstrap tenants create acme-corp
 ```
 
-`role_id` and `secret_id` print once and are not stored. Re-issue a secret_id if lost.
+`tenants create` writes the reader and writer roles (and database roles when credentials are enabled). It prints no credentials; apps mint their own at login. Those roles are the record of truth: `tenants list` reads both mounts and flags a tenant missing from one.
 
-Write as the tenant writer:
+Log in as one tenant, the way an app does per request (the provisioning token may also mint):
 
 ```bash
-curl -s -H "X-Vault-Token: ${TENANT_TOKEN}" \
-  -X POST --data '{"data":{"api_key":"FAKE-value"}}' \
-  "${VAULT_ADDR}/v1/kv/data/customers/acme-corp/app-config"
+MOUNT=approle-writer TENANT=acme-corp
+ROLE_ID=$(vault read -field=role_id auth/$MOUNT/role/$TENANT/role-id)
+SECRET_ID=$(vault write -f -field=secret_id auth/$MOUNT/role/$TENANT/secret-id)
+TENANT_TOKEN=$(vault write -field=token auth/$MOUNT/login role_id=$ROLE_ID secret_id=$SECRET_ID)
+VAULT_TOKEN=$TENANT_TOKEN vault kv put -mount=kv customers/acme-corp/app-config api_key=FAKE-value
 ```
 
 Offboard (revoke access, keep secrets):

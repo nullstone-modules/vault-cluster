@@ -1,6 +1,7 @@
 package vaultcluster
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -133,5 +134,56 @@ func TestAppsBrokerTokens(t *testing.T) {
 	}
 	if got := status(c, "POST", "auth/"+readerMount+"/login", login); got < 400 {
 		t.Fatalf("replayed secret ID logged in: HTTP %d", got)
+	}
+}
+
+// The role lists are the tenant registry: list shows onboarded tenants, flags a half-created one, and
+// is readable by provisioning but not by a broker.
+func TestListTenants(t *testing.T) {
+	c := startVaultInmem(t)
+	c.Cfg.KVMount = "kv"
+	c.Cfg.TenantPrefix = "customers"
+	c.Cfg.AuthMount = "approle"
+	c.Cfg.DatabaseMount = "database"
+	c.Cfg.EnableAudit = false
+	if err := c.Configure(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.ListTenants(); err != nil || len(got) != 0 {
+		t.Fatalf("empty cluster: %v %v", got, err)
+	}
+	for _, id := range []string{"tenant-b", "tenant-a"} {
+		if err := c.CreateTenant(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.deleteMissingOK("auth/" + c.Cfg.TenantMount("writer") + "/role/tenant-b"); err != nil {
+		t.Fatal(err)
+	}
+
+	prov, err := c.API.Auth().Token().Create(&api.TokenCreateRequest{Policies: []string{"provisioning"}, NoParent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.WithToken(prov.Auth.ClientToken).ListTenants()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Tenant{{ID: "tenant-a", Reader: true, Writer: true}, {ID: "tenant-b", Reader: true}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("got %+v want %+v", got, want)
+	}
+	var out strings.Builder
+	PrintTenants(&out, got)
+	if !strings.Contains(out.String(), "tenant-b\t(no writer role") || !strings.HasPrefix(out.String(), "tenant-a\n") {
+		t.Fatalf("output:\n%s", out.String())
+	}
+
+	app, err := c.API.Auth().Token().Create(&api.TokenCreateRequest{Policies: []string{c.Cfg.AppsPolicy("reader")}, NoParent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.WithToken(app.Auth.ClientToken).ListTenants(); err == nil {
+		t.Fatal("a broker token listed tenants")
 	}
 }
