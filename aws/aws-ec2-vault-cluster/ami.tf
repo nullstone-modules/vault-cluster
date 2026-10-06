@@ -3,9 +3,10 @@ data "aws_ami" "vault" {
   most_recent = true
   owners      = [var.ami_owner]
 
+  # Tags are invisible to other accounts; the bake names the image nullstone-vault-<timestamp>.
   filter {
-    name   = "tag:Name"
-    values = ["nullstone-vault"]
+    name   = "name"
+    values = ["nullstone-vault-*"]
   }
 
   filter {
