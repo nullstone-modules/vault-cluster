@@ -14,22 +14,22 @@ func TestCredentialsMatrix(t *testing.T) {
 	if err := c.Configure(); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateTenant("tenant-a", false); err != nil {
+	if err := c.CreateTenant("tenant-a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateTenant("tenant-b", false); err != nil {
+	if err := c.CreateTenant("tenant-b"); err != nil {
 		t.Fatal(err)
 	}
 
-	tokA, err := c.LoginAppRole(c.Cfg.TenantRole("writer", "tenant-a"))
+	tokA, err := c.LoginAppRole(c.Cfg.TenantMount("writer"), "tenant-a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tokB, err := c.LoginAppRole(c.Cfg.TenantRole("writer", "tenant-b"))
+	tokB, err := c.LoginAppRole(c.Cfg.TenantMount("writer"), "tenant-b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tokAR, err := c.LoginAppRole(c.Cfg.TenantRole("reader", "tenant-a"))
+	tokAR, err := c.LoginAppRole(c.Cfg.TenantMount("reader"), "tenant-a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestCredentialsAfterIsolation(t *testing.T) {
 	if err := c.Configure(); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateTenant("tenant-a", false); err != nil {
+	if err := c.CreateTenant("tenant-a"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -116,11 +116,17 @@ func TestCredentialsAfterIsolation(t *testing.T) {
 	if err := prov.enableCredentialsIfNeeded(store); err != nil {
 		t.Fatal(err)
 	}
-	if err := prov.CreateTenant("tenant-a", false); err != nil {
+	if err := prov.CreateTenant("tenant-a"); err != nil {
 		t.Fatal(err)
 	}
+	if r, _ := prov.Do("POST", c.Cfg.DatabaseMount+"/roles/tenant-tenant-a-readwrite", map[string]any{
+		"db_name":             c.Cfg.DatabaseConnName,
+		"creation_statements": []string{`CREATE ROLE "{{name}}" WITH LOGIN SUPERUSER PASSWORD '{{password}}';`},
+	}); r.Status != 403 {
+		t.Fatalf("provisioning wrote a database role with its own SQL: HTTP %d", r.Status)
+	}
 
-	tokA, err := c.LoginAppRole(c.Cfg.TenantRole("writer", "tenant-a"))
+	tokA, err := c.LoginAppRole(c.Cfg.TenantMount("writer"), "tenant-a")
 	if err != nil {
 		t.Fatal(err)
 	}

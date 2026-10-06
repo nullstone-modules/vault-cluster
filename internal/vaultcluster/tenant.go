@@ -10,46 +10,27 @@ import (
 	"github.com/hashicorp/vault/api"
 )
 
-func (c *Client) CreateTenant(tenantID string, issueCreds bool) error {
+// Tenant secret IDs are minted by apps right before login, so they live seconds and work once.
+const (
+	tenantSecretIDTTL  = "60s"
+	tenantSecretIDUses = 1
+)
+
+// CreateTenant writes the tenant's reader and writer AppRole roles (role name = tenant ID) and, with
+// credentials enabled, its database roles. Tenant policies are static, so nothing here writes a policy.
+// No credentials are issued: apps mint their own at login.
+func (c *Client) CreateTenant(tenantID string) error {
 	if err := ValidateTenantID(tenantID); err != nil {
 		return err
 	}
-	readerP := c.Cfg.TenantPolicy("reader", tenantID)
-	writerP := c.Cfg.TenantPolicy("writer", tenantID)
-	dbP := c.Cfg.TenantPolicy("database", tenantID)
-	readerR := c.Cfg.TenantRole("reader", tenantID)
-	writerR := c.Cfg.TenantRole("writer", tenantID)
-
-	apply := func(tmpl, name string) error {
-		hcl, err := RenderPolicy(tmpl, tenantID, c.Cfg)
-		if err != nil {
-			return err
-		}
-		if err := LintOrError(name, hcl, c.Cfg); err != nil {
-			return err
-		}
-		return c.API.Sys().PutPolicy(name, hcl)
-	}
-	if err := apply("tenant-reader", readerP); err != nil {
+	if err := c.writeAppRole("reader", tenantID, []string{c.Cfg.TenantPolicy("reader")}); err != nil {
 		return err
 	}
-	if err := apply("tenant-writer", writerP); err != nil {
-		return err
-	}
+	writerPolicies := []string{c.Cfg.TenantPolicy("writer")}
 	if c.Cfg.EnableCredentials {
-		if err := apply("tenant-database", dbP); err != nil {
-			return err
-		}
+		writerPolicies = append(writerPolicies, c.Cfg.TenantPolicy("database"))
 	}
-
-	if err := c.writeAppRole(readerR, []string{readerP}); err != nil {
-		return err
-	}
-	writerPolicies := []string{writerP}
-	if c.Cfg.EnableCredentials {
-		writerPolicies = append(writerPolicies, dbP)
-	}
-	if err := c.writeAppRole(writerR, writerPolicies); err != nil {
+	if err := c.writeAppRole("writer", tenantID, writerPolicies); err != nil {
 		return err
 	}
 
@@ -62,68 +43,68 @@ func (c *Client) CreateTenant(tenantID string, issueCreds bool) error {
 		}
 	}
 
-	if !issueCreds {
-		log.Printf("tenant %s onboarded (no credentials issued)", tenantID)
-		return nil
-	}
-	if err := c.printAppRoleCreds(readerR); err != nil {
-		return err
-	}
-	return c.printAppRoleCreds(writerR)
+	log.Printf("tenant %s onboarded", tenantID)
+	return nil
 }
 
-func (c *Client) writeAppRole(role string, policies []string) error {
-	_, err := c.API.Logical().Write("auth/"+c.Cfg.AuthMount+"/role/"+role, map[string]any{
+func (c *Client) writeAppRole(kind, tenantID string, policies []string) error {
+	_, err := c.API.Logical().Write("auth/"+c.Cfg.TenantMount(kind)+"/role/"+tenantID, map[string]any{
 		"token_policies":     policies,
 		"token_ttl":          c.Cfg.TokenTTL,
 		"token_max_ttl":      c.Cfg.TokenMaxTTL,
 		"token_type":         "service",
-		"secret_id_ttl":      "24h",
-		"secret_id_num_uses": 0,
+		"secret_id_ttl":      tenantSecretIDTTL,
+		"secret_id_num_uses": tenantSecretIDUses,
 		"bind_secret_id":     true,
 	})
 	return err
 }
 
+// dbCreationStatements are the only statements a tenant database role may run. The provisioning
+// policy pins creation_statements to these values, so a role cannot grant more than the app groups.
+func dbCreationStatements() []string {
+	return []string{
+		`CREATE ROLE "{{name}}" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';`,
+		`GRANT app_readonly TO "{{name}}";`,
+		`GRANT app_readwrite TO "{{name}}";`,
+	}
+}
+
 func (c *Client) writeDBRole(tenantID, suffix, group string) error {
 	role := fmt.Sprintf("tenant-%s-%s", tenantID, suffix)
-	stmt1 := `CREATE ROLE "{{name}}" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';`
-	stmt2 := fmt.Sprintf(`GRANT %s TO "{{name}}";`, group)
+	stmts := dbCreationStatements()
+	grant := fmt.Sprintf(`GRANT %s TO "{{name}}";`, group)
+	found := false
+	for _, s := range stmts[1:] {
+		found = found || s == grant
+	}
+	if !found {
+		return fmt.Errorf("unknown database group %q", group)
+	}
 	_, err := c.API.Logical().Write(c.Cfg.DatabaseMount+"/roles/"+role, map[string]any{
 		"db_name":             c.Cfg.DatabaseConnName,
-		"creation_statements": []string{stmt1, stmt2},
+		"creation_statements": []string{stmts[0], grant},
 		"default_ttl":         c.Cfg.DatabaseTTL,
 		"max_ttl":             c.Cfg.DatabaseMaxTTL,
 	})
 	return err
 }
 
-func (c *Client) printAppRoleCreds(role string) error {
-	s, err := c.API.Logical().Read("auth/" + c.Cfg.AuthMount + "/role/" + role + "/role-id")
-	if err != nil {
-		return err
-	}
-	sec, err := c.API.Logical().Write("auth/"+c.Cfg.AuthMount+"/role/"+role+"/secret-id", map[string]any{})
-	if err != nil {
-		return err
-	}
-	fmt.Printf("----------------------------------------------------------\n")
-	fmt.Printf("role       %s\n", role)
-	fmt.Printf("role_id    %s\n", s.Data["role_id"])
-	fmt.Printf("secret_id  %s\n", sec.Data["secret_id"])
-	return nil
-}
-
-func (c *Client) LoginAppRole(role string) (string, error) {
-	s, err := c.API.Logical().Read("auth/" + c.Cfg.AuthMount + "/role/" + role + "/role-id")
+// LoginAppRole logs in to role on an AppRole mount with a fresh secret ID, as an app does for one tenant.
+func (c *Client) LoginAppRole(mount, role string) (string, error) {
+	path := "auth/" + mount + "/role/" + role
+	s, err := c.API.Logical().Read(path + "/role-id")
 	if err != nil {
 		return "", err
 	}
-	sec, err := c.API.Logical().Write("auth/"+c.Cfg.AuthMount+"/role/"+role+"/secret-id", map[string]any{})
+	if s == nil {
+		return "", fmt.Errorf("approle role %s/%s not found", mount, role)
+	}
+	sec, err := c.API.Logical().Write(path+"/secret-id", map[string]any{})
 	if err != nil {
 		return "", err
 	}
-	login, err := c.API.Logical().Write("auth/"+c.Cfg.AuthMount+"/login", map[string]any{
+	login, err := c.API.Logical().Write("auth/"+mount+"/login", map[string]any{
 		"role_id":   s.Data["role_id"],
 		"secret_id": sec.Data["secret_id"],
 	})
@@ -140,9 +121,9 @@ func (c *Client) OffboardTenant(tenantID string, purge bool) error {
 	if err := ValidateTenantID(tenantID); err != nil {
 		return err
 	}
-	for _, role := range []string{c.Cfg.TenantRole("reader", tenantID), c.Cfg.TenantRole("writer", tenantID)} {
-		if err := c.deleteMissingOK("auth/" + c.Cfg.AuthMount + "/role/" + role); err != nil {
-			return fmt.Errorf("delete role %s: %w", role, err)
+	for _, kind := range []string{"reader", "writer"} {
+		if err := c.deleteMissingOK("auth/" + c.Cfg.TenantMount(kind) + "/role/" + tenantID); err != nil {
+			return fmt.Errorf("delete %s role %s: %w", kind, tenantID, err)
 		}
 	}
 	if c.Cfg.EnableCredentials {
@@ -152,15 +133,6 @@ func (c *Client) OffboardTenant(tenantID string, purge bool) error {
 			if err := c.deleteMissingOK(c.Cfg.DatabaseMount + "/roles/" + dbRole); err != nil {
 				return fmt.Errorf("delete database role %s: %w", dbRole, err)
 			}
-		}
-	}
-	for _, name := range []string{
-		c.Cfg.TenantPolicy("reader", tenantID),
-		c.Cfg.TenantPolicy("writer", tenantID),
-		c.Cfg.TenantPolicy("database", tenantID),
-	} {
-		if err := c.API.Sys().DeletePolicy(name); err != nil && !isNotFound(err) {
-			return fmt.Errorf("delete policy %s: %w", name, err)
 		}
 	}
 	if purge {

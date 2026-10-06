@@ -34,6 +34,7 @@ func usage() {
 Commands:
   bootstrap local|aws|azure|gcp     Init once, unseal, configure
   tenants create <id>
+  tenants list
   tenants destroy <id> --yes [--purge-secrets]
   snapshot take                     Write a Raft snapshot
   snapshot list
@@ -129,7 +130,7 @@ func runBootstrap(c *vaultcluster.Client, args []string) error {
 
 func runTenants(c *vaultcluster.Client, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: vault-utils tenants create|destroy <id>")
+		return fmt.Errorf("usage: vault-utils tenants create|list|destroy")
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
@@ -143,7 +144,14 @@ func runTenants(c *vaultcluster.Client, args []string) error {
 		if id == "" {
 			return fmt.Errorf("usage: vault-utils tenants create <id>")
 		}
-		return c.CreateTenant(id, true)
+		return c.CreateTenant(id)
+	case "list":
+		tenants, err := c.ListTenants()
+		if err != nil {
+			return err
+		}
+		vaultcluster.PrintTenants(os.Stdout, tenants)
+		return nil
 	case "destroy":
 		yes, purge := false, false
 		id := ""
@@ -164,7 +172,7 @@ func runTenants(c *vaultcluster.Client, args []string) error {
 		}
 		return c.OffboardTenant(id, purge)
 	default:
-		return fmt.Errorf("unknown subcommand %q (create, destroy)", sub)
+		return fmt.Errorf("unknown subcommand %q (create, list, destroy)", sub)
 	}
 }
 

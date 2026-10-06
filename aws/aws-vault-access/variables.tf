@@ -15,22 +15,19 @@ variable "role_name" {
   }
 }
 
-variable "policies" {
-  description = "Vault policies granted by role_name. Platform and tenant policy names are rejected."
-  type        = list(string)
-  default     = []
+variable "access" {
+  description = "Tenant access level: reader (KV read) or writer (KV read/write and database credentials). The app logs in as one tenant at a time at this level."
+  type        = string
+  default     = "reader"
 
   validation {
-    condition = alltrue([
-      for policy in var.policies :
-      can(regex("^[A-Za-z0-9_-]+$", policy)) &&
-      !contains(["admin", "apps-auth", "default", "operator", "provisioning", "root"], policy) &&
-      !startswith(policy, "tenant-")
-    ])
-    error_message = "policies cannot name a platform or tenant policy."
+    condition     = contains(["reader", "writer"], var.access)
+    error_message = "access must be reader or writer."
   }
 }
 
 locals {
   security_group_id = var.app_metadata["security_group_id"]
+  # Cluster convention: one AppRole mount per level, role name = tenant ID (vault-utils AUTH_MOUNT, default approle).
+  tenant_mount = "approle-${var.access}"
 }

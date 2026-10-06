@@ -1,21 +1,22 @@
-# Full KV lifecycle on one tenant. Name all five KV v2 path families.
-path "{{.KVMount}}/data/{{.TenantPrefix}}/{{.TenantID}}/*" {
+# Full KV lifecycle on the tenant named by the caller's AppRole role ({{.WriterMount}} mount; role name = tenant ID). Static: written once at bootstrap.
+# Name all five KV v2 path families.
+path "{{.KVMount}}/data/{{.TenantPrefix}}/{{.WriterTenant}}/*" {
   capabilities = ["create", "read", "update", "patch", "delete", "list"]
 }
 
-path "{{.KVMount}}/metadata/{{.TenantPrefix}}/{{.TenantID}}/*" {
+path "{{.KVMount}}/metadata/{{.TenantPrefix}}/{{.WriterTenant}}/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
-path "{{.KVMount}}/delete/{{.TenantPrefix}}/{{.TenantID}}/*" {
+path "{{.KVMount}}/delete/{{.TenantPrefix}}/{{.WriterTenant}}/*" {
   capabilities = ["update"]
 }
 
-path "{{.KVMount}}/undelete/{{.TenantPrefix}}/{{.TenantID}}/*" {
+path "{{.KVMount}}/undelete/{{.TenantPrefix}}/{{.WriterTenant}}/*" {
   capabilities = ["update"]
 }
 
-path "{{.KVMount}}/destroy/{{.TenantPrefix}}/{{.TenantID}}/*" {
+path "{{.KVMount}}/destroy/{{.TenantPrefix}}/{{.WriterTenant}}/*" {
   capabilities = ["update"]
 }
 
@@ -55,7 +56,11 @@ path "auth/token/create*" {
   capabilities = ["deny"]
 }
 
-path "auth/{{.AuthMount}}/role/*" {
+path "auth/{{.ReaderMount}}/role/*" {
+  capabilities = ["deny"]
+}
+
+path "auth/{{.WriterMount}}/role/*" {
   capabilities = ["deny"]
 }
 

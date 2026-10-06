@@ -46,8 +46,8 @@ func ConfigFromEnv() Config {
 		// programmatically. DatabaseMount stays because the tenant and
 		// platform policies reference its paths even when the engine is
 		// not mounted.
-		TokenTTL:    getenv("DEFAULT_TOKEN_TTL", "1h"),
-		TokenMaxTTL: getenv("MAX_TOKEN_TTL", "24h"),
+		TokenTTL:    getenv("DEFAULT_TOKEN_TTL", "15m"),
+		TokenMaxTTL: getenv("MAX_TOKEN_TTL", "15m"),
 		HTTPTimeout: 15 * time.Second,
 	}
 	return c
@@ -60,12 +60,20 @@ func getenv(k, def string) string {
 	return def
 }
 
-func (c Config) TenantPolicy(kind, tenantID string) string {
-	return fmt.Sprintf("tenant-%s-%s", tenantID, kind)
+// TenantMount is the AppRole mount for one access kind (reader, writer). Role names on it are tenant IDs,
+// so the static tenant-<kind> policy reads the tenant from the login's role_name alias metadata.
+func (c Config) TenantMount(kind string) string {
+	return c.AuthMount + "-" + kind
 }
 
-func (c Config) TenantRole(kind, tenantID string) string {
-	return fmt.Sprintf("tenant-%s-%s", tenantID, kind)
+// TenantPolicy is the static policy for one access kind (reader, writer, database).
+func (c Config) TenantPolicy(kind string) string {
+	return "tenant-" + kind
+}
+
+// AppsPolicy lets an app log in as any tenant on the TenantMount of one access kind (reader, writer).
+func (c Config) AppsPolicy(kind string) string {
+	return "apps-" + kind
 }
 
 func (c Config) KVDataPath(tenantID, secret string) string {

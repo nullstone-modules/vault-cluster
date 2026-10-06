@@ -1,9 +1,9 @@
-# Dynamic DB creds for this tenant only. Additive; does not widen KV access.
-path "{{.DatabaseMount}}/creds/tenant-{{.TenantID}}-*" {
+# Dynamic DB creds for the tenant named by the caller's {{.WriterMount}} role only. Additive; does not widen KV access.
+path "{{.DatabaseMount}}/creds/tenant-{{.WriterTenant}}-*" {
   capabilities = ["read"]
 }
 
-path "{{.DatabaseMount}}/roles/tenant-{{.TenantID}}-*" {
+path "{{.DatabaseMount}}/roles/tenant-{{.WriterTenant}}-*" {
   capabilities = ["read"]
 }
 

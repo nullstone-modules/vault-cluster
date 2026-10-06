@@ -39,11 +39,19 @@ path "sys/audit" {
   capabilities = ["read", "sudo"]
 }
 
-path "auth/{{.AuthMount}}/role" {
+path "auth/{{.ReaderMount}}/role" {
   capabilities = ["list"]
 }
 
-path "auth/{{.AuthMount}}/role/*" {
+path "auth/{{.ReaderMount}}/role/*" {
+  capabilities = ["read"]
+}
+
+path "auth/{{.WriterMount}}/role" {
+  capabilities = ["list"]
+}
+
+path "auth/{{.WriterMount}}/role/*" {
   capabilities = ["read"]
 }
 

@@ -13,7 +13,7 @@ resource "aws_lambda_invocation" "vault_role" {
       name      = local.role_name
       method    = "aws"
       principal = data.aws_iam_role.app.arn
-      policies  = var.policies
+      policies  = ["apps-${var.access}"]
     }
   })
 }

@@ -183,15 +183,15 @@ func TestLocalComposeRuntime(t *testing.T) {
 		"bootstrap", "tenants", "create", "tenant-a")
 
 	prov := c.WithToken(provToken)
-	roleResp, err := prov.API.Logical().Read("auth/approle/role/tenant-tenant-a-writer/role-id")
+	roleResp, err := prov.API.Logical().Read("auth/approle-writer/role/tenant-a/role-id")
 	if err != nil || roleResp == nil {
 		t.Fatalf("reading writer role-id: %v", err)
 	}
-	secResp, err := prov.API.Logical().Write("auth/approle/role/tenant-tenant-a-writer/secret-id", nil)
+	secResp, err := prov.API.Logical().Write("auth/approle-writer/role/tenant-a/secret-id", nil)
 	if err != nil || secResp == nil {
 		t.Fatalf("issuing writer secret-id: %v", err)
 	}
-	loginResp, err := c.API.Logical().Write("auth/approle/login", map[string]any{
+	loginResp, err := c.API.Logical().Write("auth/approle-writer/login", map[string]any{
 		"role_id":   roleResp.Data["role_id"],
 		"secret_id": secResp.Data["secret_id"],
 	})
