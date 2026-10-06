@@ -1,3 +1,7 @@
+# 0.1.1
+
+* `aws-ec2-vault-cluster` plans on a fresh workspace: AMI looked up by name, NLB listener count known at plan time, vault-admin 0.2.2 (Secrets Manager egress).
+
 # 0.1.0
 
 Modules: `aws-ec2-vault-cluster` 0.1.0, `aws-vault-access` 0.2.0. Needs `vault-admin` 0.2.1 and a fresh node AMI.
