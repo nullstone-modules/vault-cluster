@@ -56,7 +56,7 @@ func TestSettingsFromOutputs(t *testing.T) {
 			if (got.Note != "") != tt.wantNote {
 				t.Fatalf("note = %q", got.Note)
 			}
-			got.Note, got.LoginHint = "", ""
+			got.Note = ""
 			if got != tt.want {
 				t.Fatalf("got %+v want %+v", got, tt.want)
 			}
@@ -78,16 +78,16 @@ func TestRender(t *testing.T) {
 		{"fish", plain, "set -gx VAULT_ADDR 'http://vault.internal:8200';\nset -e VAULT_TLS_SERVER_NAME;\n"},
 		{"powershell", withSNI, "$env:VAULT_ADDR = 'https://vault.internal:8200'\n$env:VAULT_TLS_SERVER_NAME = 'vault.acme.example.com'\n"},
 		{"powershell", plain, "$env:VAULT_ADDR = 'http://vault.internal:8200'\nRemove-Item Env:VAULT_TLS_SERVER_NAME -ErrorAction SilentlyContinue\n"},
-		{"bash", Settings{Addr: "http://a'b"}, "export VAULT_ADDR='http://a'\\''b'\n"},
-		{"powershell", Settings{Addr: "http://a'b"}, "$env:VAULT_ADDR = 'http://a''b'\n"},
+		{"bash", Settings{Addr: "http://a'b"}, "export VAULT_ADDR='http://a'\\''b'\nunset VAULT_TLS_SERVER_NAME\n"},
+		{"powershell", Settings{Addr: "http://a'b"}, "$env:VAULT_ADDR = 'http://a''b'\nRemove-Item Env:VAULT_TLS_SERVER_NAME -ErrorAction SilentlyContinue\n"},
 	}
 	for _, tt := range tests {
 		got, err := Render(tt.shell, tt.in)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.HasPrefix(got, tt.want) || strings.Contains(got, "# Log in") {
-			t.Fatalf("%s:\n got %q\nwant prefix %q and no hint", tt.shell, got, tt.want)
+		if got != tt.want {
+			t.Fatalf("%s:\n got %q\nwant %q", tt.shell, got, tt.want)
 		}
 	}
 	if _, err := Render("cmd", plain); err == nil {
@@ -160,32 +160,5 @@ func TestLoadProfile(t *testing.T) {
 	empty, _ := loadProfile(t.TempDir(), "default")
 	if _, err := empty.APIConfig("acme"); err == nil || strings.Contains(err.Error(), "not-a-real") {
 		t.Fatalf("missing key: %v", err)
-	}
-}
-
-func TestLoginHint(t *testing.T) {
-	tests := []struct {
-		provider string
-		outputs  map[string]any
-		want     string
-	}{
-		{"aws", tlsCluster, "vault login -method=aws role=admin-tenants"},
-		{"gcp", tlsCluster, "vault login -method=gcp role=admin-tenants service_account=<admin service account>"},
-		{"azure", tlsCluster, "vault login -method=oidc role=admin-tenants"},
-		{"aws", map[string]any{"vault_addr": "https://v:8200", "admin_login_hint": "vault login -method=oidc role=admin-entra"}, "vault login -method=oidc role=admin-entra"},
-	}
-	for _, tt := range tests {
-		ws := Workspace{Contract: types.ModuleContractName{Category: "datastore", Provider: tt.provider, Platform: "vault"}, Outputs: tt.outputs}
-		s, err := SettingsFromOutputs(ws, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if s.LoginHint != tt.want {
-			t.Fatalf("%s: hint = %q", tt.provider, s.LoginHint)
-		}
-		out, _ := Render("bash", s)
-		if !strings.HasSuffix(out, "# Log in: "+tt.want+"\n") {
-			t.Fatalf("%s: render = %q", tt.provider, out)
-		}
 	}
 }

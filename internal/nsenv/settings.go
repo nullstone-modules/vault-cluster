@@ -12,7 +12,6 @@ import (
 type Settings struct {
 	Addr          string
 	TLSServerName string
-	LoginHint     string
 	// Note explains a fallback, for stderr.
 	Note string
 }
@@ -45,15 +44,10 @@ func SettingsFromOutputs(ws Workspace, internal bool) (Settings, error) {
 	if internalAddr == "" && userAddr == "" {
 		return Settings{}, fmt.Errorf("workspace has no vault_addr, user_vault_addr, or vault_fqdn output; has it been applied?")
 	}
-
-	hint := str("admin_login_hint")
-	if hint == "" {
-		hint = defaultLoginHint(ws.Contract.Provider)
-	}
 	if !internal && userAddr != "" {
-		return Settings{Addr: userAddr, LoginHint: hint}, nil
+		return Settings{Addr: userAddr}, nil
 	}
-	s := Settings{Addr: internalAddr, LoginHint: hint}
+	s := Settings{Addr: internalAddr}
 	if !internal {
 		s.Note = "no subdomain is connected to this cluster; using " + vaultFQDN + ", which resolves only inside the cluster network"
 	}
@@ -64,18 +58,6 @@ func SettingsFromOutputs(ws Workspace, internal bool) (Settings, error) {
 		}
 	}
 	return s, nil
-}
-
-// defaultLoginHint names the auth method humans use on each cloud; clusters can override it with output admin_login_hint.
-func defaultLoginHint(provider string) string {
-	switch provider {
-	case "aws":
-		return "vault login -method=aws role=admin-tenants"
-	case "gcp":
-		return "vault login -method=gcp role=admin-tenants service_account=<admin service account>"
-	default:
-		return "vault login -method=oidc role=admin-tenants"
-	}
 }
 
 func Render(shell string, s Settings) (string, error) {
@@ -110,9 +92,6 @@ func Render(shell string, s Settings) (string, error) {
 		set("VAULT_TLS_SERVER_NAME", s.TLSServerName)
 	} else {
 		unset("VAULT_TLS_SERVER_NAME")
-	}
-	if s.LoginHint != "" {
-		fmt.Fprintf(&b, "# Log in: %s\n", s.LoginHint)
 	}
 	return b.String(), nil
 }
