@@ -42,6 +42,9 @@ Commands:
   snapshot schedule                 Cron loop (BACKUP_SCHEDULE; empty disables)
   health                            Print seal status
   health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
+  env --org --stack --env --block   Print shell settings for a Nullstone Vault cluster workspace
+
+Without VAULT_TOKEN, tenants, snapshot take|restore, and health use the token from "vault login".
 
 Local key material: BOOTSTRAP_DIR (default .bootstrap).
 AWS: VAULT_INIT_SECRET_ARN, VAULT_PROVISIONING_SECRET_ARN, VAULT_OPERATOR_SECRET_ARN.
@@ -50,7 +53,17 @@ Optional: SNAPSHOT_BUCKET, SNAPSHOT_PREFIX (default vault-snapshots).
 }
 
 func run(cmd string, args []string) error {
+	if cmd == "env" {
+		return runEnv(args)
+	}
 	cfg := vaultcluster.ConfigFromEnv()
+	if cfg.Token == "" && usesLoginToken(cmd, args) {
+		tok, err := vaultcluster.HelperToken()
+		if err != nil {
+			return err
+		}
+		cfg.Token = tok
+	}
 	c, err := vaultcluster.New(cfg)
 	if err != nil {
 		return err
@@ -322,6 +335,23 @@ func restoreSnapshot(c *vaultcluster.Client, ref string) error {
 		return c.SnapshotRestoreData(b)
 	}
 	return c.SnapshotRestore(ref)
+}
+
+// usesLoginToken lists commands a human runs after `vault login`. Node services keep their platform tokens.
+func usesLoginToken(cmd string, args []string) bool {
+	sub := ""
+	if len(args) > 0 {
+		sub = args[0]
+	}
+	switch cmd {
+	case "tenants":
+		return true
+	case "snapshot":
+		return sub == "take" || sub == "restore"
+	case "health":
+		return sub != "serve"
+	}
+	return false
 }
 
 func useOperatorToken(c *vaultcluster.Client) error {

@@ -22,16 +22,17 @@ There is no `module "vault_cluster" { source = "./${var.cloud}" }` switch. Share
 3. [Repository layout](#repository-layout)
 4. [Prerequisites](#prerequisites)
 5. [Quick start](#quick-start)
-6. [Commands](#commands)
-7. [Tenant isolation](#tenant-isolation)
-8. [Identities](#identities)
-9. [Health](#health)
-10. [Backup, restore, and disaster recovery](#backup-restore-and-disaster-recovery)
-11. [Break-glass](#break-glass)
-12. [Testing](#testing)
-13. [Troubleshooting](#troubleshooting)
-14. [App access](#app-access)
-15. [Security](#security)
+6. [Connecting to a cluster](#connecting-to-a-cluster)
+7. [Commands](#commands)
+8. [Tenant isolation](#tenant-isolation)
+9. [Identities](#identities)
+10. [Health](#health)
+11. [Backup, restore, and disaster recovery](#backup-restore-and-disaster-recovery)
+12. [Break-glass](#break-glass)
+13. [Testing](#testing)
+14. [Troubleshooting](#troubleshooting)
+15. [App access](#app-access)
+16. [Security](#security)
 
 ## Scope
 
@@ -83,6 +84,7 @@ vault-cluster/
 ├── cmd/                  Go app entrypoints (vault-utils CLI)
 ├── internal/vaultcluster/ shared Vault library
 ├── internal/aws/         AWS adapters (secretsmanager, s3)
+├── internal/nsenv/       Nullstone workspace lookup for `vault-utils env`
 ├── local/                Compose target, snapshots
 ├── aws/aws-ec2-vault-cluster/   Nullstone AWS module
 ├── gcp/                  Nullstone Terraform module (not yet implemented)
@@ -131,6 +133,19 @@ Back up `local/.bootstrap/vault-init.json` immediately. Without it this volume c
 
 Do not commit `.bootstrap/` or `.env`. Do not run `vault operator unseal`.
 
+## Connecting to a cluster
+
+`vault-utils env` reads the cluster workspace in Nullstone and prints `VAULT_ADDR`, plus `VAULT_TLS_SERVER_NAME` when the load balancer terminates TLS, for your shell. It needs a Nullstone API key (`nullstone set-profile`, or `NULLSTONE_API_KEY`) and a network path into the VPC (VPN, Tailscale subnet router, or similar). It prints nothing sensitive.
+
+```bash
+eval "$(vault-utils env --org <org> --stack <stack> --env <env> --block <block>)"
+vault status
+```
+
+PowerShell: `vault-utils env ... | Out-String | Invoke-Expression`. `--internal` uses `vault.internal` instead of the user-facing name. A warning on stderr means Vault is unreachable from this machine. Any other Nullstone workspace is refused.
+
+Without `VAULT_TOKEN`, `vault-utils tenants`, `snapshot take|restore`, and `health` use the token saved by `vault login` (the configured `token_helper`, else `~/.vault-token`).
+
 ## Commands
 
 Run from `local/` unless noted. Destructive commands require `--yes`.
@@ -148,6 +163,7 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 | `go test -short ./...` | no | Unit tests (tenant ID, policy lint, render, compose lint) — repo root |
 | `go test ./internal/vaultcluster` | no | Isolation and credentials (needs Docker) — repo root |
 | `go test ./local` | no | Compose runtime conformance (needs Docker) — repo root |
+| `vault-utils env --org <org> --stack <stack> --env <env> --block <block>` | no | Shell settings for a Nullstone Vault cluster — your machine |
 
 ## Tenant isolation
 
@@ -356,7 +372,7 @@ To plan against real connections:
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
    - optional `subdomain` → `subdomain/aws/route53` (user-facing TLS name on the NLB)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
-4. In the plan, expect IAM, three Secrets Manager secrets (`protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A connected subdomain adds a user-facing cert (SNI) and alias. A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use `https://vault.internal:8200`. The NLB terminates TLS; Vault nodes still listen HTTP.
+4. In the plan, expect IAM, three Secrets Manager secrets (`protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A connected subdomain adds a user-facing cert (SNI) and alias. A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use output `vault_addr` (or `user_vault_addr`) with `tls_server_name`. The NLB terminates TLS only with a connected subdomain; Vault nodes listen HTTP.
 
 Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
 
@@ -398,7 +414,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 
 Connect `vault` to the cluster. The app module must expose `security_group_id` and its IAM role name.
 
-`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`. During apply the capability calls the cluster function, which binds only that IAM role to that role.
+`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`, and `VAULT_TLS_SERVER_NAME` (empty unless the NLB terminates TLS). During apply the capability calls the cluster function, which binds only that IAM role to that role.
 
 The app does not receive a Vault token. At startup it logs in with its IAM role:
 
@@ -411,7 +427,7 @@ A login as any other role is denied. The operator token is not injected.
 ## Security
 
 - Host ports bind to `127.0.0.1` only
-- AWS NLB terminates TLS for `vault.internal` and an optional connected subdomain; Vault nodes listen HTTP on 8200
+- AWS NLB terminates TLS only when a subdomain is connected, with a certificate for that name. Clients on `vault.internal` verify it with `VAULT_TLS_SERVER_NAME` (output `tls_server_name`). Without a subdomain the NLB forwards plain TCP. Vault nodes listen HTTP on 8200
 - No Vault `-dev` mode
 - Root token revoked after bootstrap
 - Unseal keys, tokens, and `.env` are gitignored (mode 600). Never printed to logs
