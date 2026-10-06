@@ -83,7 +83,7 @@ func LintPolicy(policyName, src string, cfg Config) []Finding {
 			add(fmt.Sprintf("path %q mixes deny with [%s]", p.path, p.caps))
 		}
 		if strings.Contains(","+p.caps+",", ",sudo,") {
-			if policyName != "operator" && policyName != "admin" && policyName != "aws-auth" {
+			if policyName != "operator" && policyName != "admin" && policyName != "apps-auth" {
 				add(fmt.Sprintf("path %q grants sudo", p.path))
 			}
 		}

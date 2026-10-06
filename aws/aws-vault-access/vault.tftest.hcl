@@ -27,7 +27,7 @@ run "injects_the_capability_role" {
         vault_addr            = "http://vault.internal:8200"
         nlb_security_group_id = "sg-nlb"
         vault_api_port        = "8200"
-        admin_function_name   = "vault-aws-auth"
+        admin_function_name   = "vault-apps-auth"
       }
     }
   }
@@ -38,7 +38,7 @@ run "injects_the_capability_role" {
   }
 
   assert {
-    condition     = jsondecode(aws_lambda_invocation.aws_auth_role.input).data.bound_iam_principal_arn == "arn:aws:iam::123456789012:role/app"
+    condition     = jsondecode(aws_lambda_invocation.vault_role.input).data.principal == "arn:aws:iam::123456789012:role/app"
     error_message = "The function must bind only the app IAM role."
   }
 
@@ -59,7 +59,7 @@ run "uses_the_cluster_port" {
         vault_addr            = "http://vault.internal:8443"
         nlb_security_group_id = "sg-nlb"
         vault_api_port        = "8443"
-        admin_function_name   = "vault-aws-auth"
+        admin_function_name   = "vault-apps-auth"
       }
     }
   }
@@ -85,7 +85,7 @@ run "rejects_platform_policy" {
         vault_addr            = "http://vault.internal:8200"
         nlb_security_group_id = "sg-nlb"
         vault_api_port        = "8200"
-        admin_function_name   = "vault-aws-auth"
+        admin_function_name   = "vault-apps-auth"
       }
     }
   }
@@ -110,7 +110,7 @@ run "rejects_invalid_role" {
         vault_addr            = "http://vault.internal:8200"
         nlb_security_group_id = "sg-nlb"
         vault_api_port        = "8200"
-        admin_function_name   = "vault-aws-auth"
+        admin_function_name   = "vault-apps-auth"
       }
     }
   }

@@ -73,7 +73,7 @@ func (c *Client) RunBootstrap(store KeyStore, opts BootstrapOptions) error {
 		return err
 	}
 
-	for _, name := range []string{"provisioning", "operator", "aws-auth"} {
+	for _, name := range []string{"provisioning", "operator", "apps-auth"} {
 		tok, err := c.issueOrphanToken(name)
 		if err != nil {
 			return err

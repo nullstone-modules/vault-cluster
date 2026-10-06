@@ -2,16 +2,18 @@ data "aws_iam_role" "app" {
   name = var.app_metadata["role_name"]
 }
 
-resource "aws_lambda_invocation" "aws_auth_role" {
+# The cluster function writes one Vault auth role for this app's IAM role on the aws auth mount.
+resource "aws_lambda_invocation" "vault_role" {
   function_name   = local.admin_function_name
   lifecycle_scope = "CRUD"
 
   input = jsonencode({
-    type = "aws_auth_role"
+    type = "vault_role"
     data = {
-      name                    = local.role_name
-      bound_iam_principal_arn = data.aws_iam_role.app.arn
-      policies                = var.policies
+      name      = local.role_name
+      method    = "aws"
+      principal = data.aws_iam_role.app.arn
+      policies  = var.policies
     }
   })
 }
