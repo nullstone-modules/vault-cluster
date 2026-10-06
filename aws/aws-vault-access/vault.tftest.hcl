@@ -87,6 +87,7 @@ run "writer_access_selects_the_writer_mount" {
     values = {
       outputs = {
         vault_fqdn            = "vault.internal"
+        vault_addr            = "http://vault.internal:8200"
         nlb_security_group_id = "sg-nlb"
         vault_api_port        = "8200"
         admin_function_name   = "vault-aws-auth"
