@@ -24,6 +24,7 @@ run "injects_the_capability_role" {
     values = {
       outputs = {
         vault_fqdn            = "vault.internal"
+        vault_addr            = "http://vault.internal:8200"
         nlb_security_group_id = "sg-nlb"
         vault_api_port        = "8200"
         admin_function_name   = "vault-aws-auth"
@@ -55,6 +56,7 @@ run "uses_the_cluster_port" {
     values = {
       outputs = {
         vault_fqdn            = "vault.internal"
+        vault_addr            = "http://vault.internal:8443"
         nlb_security_group_id = "sg-nlb"
         vault_api_port        = "8443"
         admin_function_name   = "vault-aws-auth"
@@ -80,6 +82,7 @@ run "rejects_platform_policy" {
     values = {
       outputs = {
         vault_fqdn            = "vault.internal"
+        vault_addr            = "http://vault.internal:8200"
         nlb_security_group_id = "sg-nlb"
         vault_api_port        = "8200"
         admin_function_name   = "vault-aws-auth"
@@ -104,6 +107,7 @@ run "rejects_invalid_role" {
     values = {
       outputs = {
         vault_fqdn            = "vault.internal"
+        vault_addr            = "http://vault.internal:8200"
         nlb_security_group_id = "sg-nlb"
         vault_api_port        = "8200"
         admin_function_name   = "vault-aws-auth"
@@ -114,4 +118,31 @@ run "rejects_invalid_role" {
   expect_failures = [
     var.role_name,
   ]
+}
+
+run "uses_the_cluster_addr_and_tls_name" {
+  command = plan
+
+  override_data {
+    target = data.ns_connection.vault
+    values = {
+      outputs = {
+        vault_fqdn            = "vault.internal"
+        vault_addr            = "https://vault.internal:8200"
+        tls_server_name       = "vault.acme.example.com"
+        nlb_security_group_id = "sg-nlb"
+        vault_api_port        = "8200"
+        admin_function_name   = "vault-aws-auth"
+      }
+    }
+  }
+
+  assert {
+    condition = output.env == [
+      { name = "VAULT_ADDR", value = "https://vault.internal:8200" },
+      { name = "VAULT_ROLE", value = "billing" },
+      { name = "VAULT_TLS_SERVER_NAME", value = "vault.acme.example.com" },
+    ]
+    error_message = "A TLS cluster must give the app its https address and the certificate name."
+  }
 }
