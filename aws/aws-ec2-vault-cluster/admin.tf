@@ -1,6 +1,6 @@
 module "vault_admin" {
   source  = "api.nullstone.io/nullstone/aws-vault-admin/aws"
-  version = "~> 0.2.1"
+  version = "~> 0.2.2"
 
   name             = "${local.resource_name}-apps-auth"
   tags             = local.tags

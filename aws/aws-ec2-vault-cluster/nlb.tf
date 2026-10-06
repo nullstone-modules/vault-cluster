@@ -59,9 +59,3 @@ resource "aws_lb_listener" "api_tls" {
     target_group_arn = aws_lb_target_group.api.arn
   }
 }
-
-resource "aws_lb_listener_certificate" "user" {
-  count           = local.nlb_tls && local.user_certificate_arn != "" && local.user_certificate_arn != local.nlb_certificate_arn ? 1 : 0
-  listener_arn    = aws_lb_listener.api_tls[0].arn
-  certificate_arn = local.user_certificate_arn
-}
