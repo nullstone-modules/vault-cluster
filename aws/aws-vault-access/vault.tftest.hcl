@@ -33,8 +33,8 @@ run "injects_the_capability_role" {
   }
 
   assert {
-    condition     = output.env == [{ name = "VAULT_ADDR", value = "http://vault.internal:8200" }, { name = "VAULT_ROLE", value = "billing" }]
-    error_message = "The app must receive only VAULT_ADDR and the capability role."
+    condition     = output.env == [{ name = "VAULT_ADDR", value = "http://vault.internal:8200" }, { name = "VAULT_ROLE", value = "billing" }, { name = "VAULT_TLS_SERVER_NAME", value = "" }]
+    error_message = "The app must receive VAULT_ADDR, the capability role, and an empty TLS name without TLS."
   }
 
   assert {

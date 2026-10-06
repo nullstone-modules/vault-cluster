@@ -1,5 +1,5 @@
 output "env" {
-  value = concat([
+  value = [
     {
       name  = "VAULT_ADDR"
       value = local.vault_addr
@@ -7,6 +7,10 @@ output "env" {
     {
       name  = "VAULT_ROLE"
       value = local.role_name
+    },
+    {
+      name  = "VAULT_TLS_SERVER_NAME"
+      value = local.tls_server_name
     }
-  ], local.tls_server_name == "" ? [] : [{ name = "VAULT_TLS_SERVER_NAME", value = local.tls_server_name }])
+  ]
 }

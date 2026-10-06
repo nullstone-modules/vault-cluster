@@ -414,7 +414,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 
 Connect `vault` to the cluster. The app module must expose `security_group_id` and its IAM role name.
 
-`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`, plus `VAULT_TLS_SERVER_NAME` when the NLB terminates TLS. During apply the capability calls the cluster function, which binds only that IAM role to that role.
+`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`, and `VAULT_TLS_SERVER_NAME` (empty unless the NLB terminates TLS). During apply the capability calls the cluster function, which binds only that IAM role to that role.
 
 The app does not receive a Vault token. At startup it logs in with its IAM role:
 
