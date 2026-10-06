@@ -1,10 +1,14 @@
-# Writes AWS auth roles for app capabilities. Cannot read tenant secrets.
+# Writes app auth roles through the cluster function, on the aws and gcp mounts. Cannot read tenant secrets.
+path "sys/auth" {
+  capabilities = ["read"]
+}
+
 path "sys/auth/aws" {
   capabilities = ["create", "read", "update", "sudo"]
 }
 
-path "sys/auth" {
-  capabilities = ["read"]
+path "sys/auth/gcp" {
+  capabilities = ["create", "read", "update", "sudo"]
 }
 
 path "auth/aws/role" {
@@ -12,6 +16,14 @@ path "auth/aws/role" {
 }
 
 path "auth/aws/role/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "auth/gcp/role" {
+  capabilities = ["list"]
+}
+
+path "auth/gcp/role/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 

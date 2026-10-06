@@ -21,7 +21,7 @@ func (c *Client) Configure() error {
 	if err := c.enableAppRole(); err != nil {
 		return err
 	}
-	for _, name := range []string{"provisioning", "operator", "aws-auth"} {
+	for _, name := range []string{"provisioning", "operator", "apps-auth"} {
 		hcl, err := RenderPolicy(name, "", c.Cfg)
 		if err != nil {
 			return err

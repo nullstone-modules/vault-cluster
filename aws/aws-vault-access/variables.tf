@@ -24,7 +24,7 @@ variable "policies" {
     condition = alltrue([
       for policy in var.policies :
       can(regex("^[A-Za-z0-9_-]+$", policy)) &&
-      !contains(["admin", "aws-auth", "default", "operator", "provisioning", "root"], policy) &&
+      !contains(["admin", "apps-auth", "default", "operator", "provisioning", "root"], policy) &&
       !startswith(policy, "tenant-")
     ])
     error_message = "policies cannot name a platform or tenant policy."

@@ -219,6 +219,7 @@ Cross-tenant, wildcard, and traversal reads return HTTP 403. That is the isolati
 | Provisioning | Create and offboard tenants. Cannot read tenant secrets. |
 | Tenant AppRole | One reader and one writer per tenant. |
 | Operator | Health, mounts, snapshots. Can start generate-root (recovery keys still required). Not a tenant secret reader. Cannot restore. |
+| Apps auth | Held by the cluster function. Writes app auth roles on the `aws` and `gcp` mounts (`apps-auth` policy). Cannot read tenant secrets. |
 
 ## Health
 
@@ -372,7 +373,7 @@ To plan against real connections:
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
    - optional `subdomain` → `subdomain/aws/route53` (user-facing TLS name on the NLB)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
-4. In the plan, expect IAM, three Secrets Manager secrets (`protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A connected subdomain adds a user-facing cert (SNI) and alias. A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use output `vault_addr` (or `user_vault_addr`) with `tls_server_name`. The NLB terminates TLS only with a connected subdomain; Vault nodes listen HTTP.
+4. In the plan, expect IAM, four Secrets Manager secrets (`init`, `provisioning`, `operator`, `apps-auth`; `protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A connected subdomain adds a user-facing cert (SNI) and alias. A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use output `vault_addr` (or `user_vault_addr`) with `tls_server_name`. The NLB terminates TLS only with a connected subdomain; Vault nodes listen HTTP.
 
 Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
 
@@ -414,7 +415,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 
 Connect `vault` to the cluster. The app module must expose `security_group_id` and its IAM role name.
 
-`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`, and `VAULT_TLS_SERVER_NAME` (empty unless the NLB terminates TLS). During apply the capability calls the cluster function, which binds only that IAM role to that role.
+`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`, and `VAULT_TLS_SERVER_NAME` (empty unless the NLB terminates TLS). During apply the capability calls the cluster function with `method = "aws"` and the app IAM role ARN; the function binds only that principal to that role. The same function serves GCP service accounts (`method = "gcp"`) for a future GCP cluster module.
 
 The app does not receive a Vault token. At startup it logs in with its IAM role:
 
@@ -431,7 +432,7 @@ A login as any other role is denied. The operator token is not injected.
 - No Vault `-dev` mode
 - Root token revoked after bootstrap
 - Unseal keys, tokens, and `.env` are gitignored (mode 600). Never printed to logs
-- AWS platform secrets (`init`, `provisioning`, `operator`) have `prevent_destroy` (var `protect_platform_secrets`, default true) and a 30-day recovery window. Set the var to false before destroying the workspace.
+- AWS platform secrets (`init`, `provisioning`, `operator`, `apps-auth`) have `prevent_destroy` (var `protect_platform_secrets`, default true) and a 30-day recovery window. Set the var to false before destroying the workspace.
 - Audit values are HMAC'd. Raw secrets must not appear in the audit log
 - Provisioning cannot read tenant KV
 - Operator cannot read tenant KV

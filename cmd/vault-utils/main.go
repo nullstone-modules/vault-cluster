@@ -391,7 +391,7 @@ func awsKeyStore() (*secretsmanager.KeyStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	store.AwsAuthARN = os.Getenv("VAULT_AWS_AUTH_SECRET_ARN")
+	store.AppsAuthARN = os.Getenv("VAULT_APPS_AUTH_SECRET_ARN")
 	return store, nil
 }
 
