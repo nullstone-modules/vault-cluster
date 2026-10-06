@@ -36,7 +36,7 @@ func TestLintFixtures(t *testing.T) {
 
 func TestRenderAndLintPlatformPolicies(t *testing.T) {
 	cfg := Config{KVMount: "kv", TenantPrefix: "customers", DatabaseMount: "database", AuthMount: "approle"}
-	for _, name := range []string{"provisioning", "operator"} {
+	for _, name := range []string{"provisioning", "operator", "aws-auth"} {
 		hcl, err := RenderPolicy(name, "", cfg)
 		if err != nil {
 			t.Fatal(err)

@@ -30,7 +30,8 @@ There is no `module "vault_cluster" { source = "./${var.cloud}" }` switch. Share
 11. [Break-glass](#break-glass)
 12. [Testing](#testing)
 13. [Troubleshooting](#troubleshooting)
-14. [Security](#security)
+14. [App access](#app-access)
+15. [Security](#security)
 
 ## Scope
 
@@ -372,9 +373,11 @@ Repo configuration for the bake:
 
 - secret `NULLSTONE_API_KEY`
 
+The module looks up `tag:Name = nullstone-vault` from `ami_owner` (default `522657839841`, the account that publishes the Vault AMI). Set `ami_owner` to `self` when this account bakes the image. Override with `ami` for a specific image or architecture.
+
 `vault-node/files/` holds the cloud-neutral image content: base `vault.hcl` and the systemd units. `vault-node/aws/vault-node-configure` is the only AWS-specific piece, and other clouds add a sibling directory. The bake installs Vault CE 2.0, `vault-utils`, and that content, then enables every unit.
 
-On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/cloud.hcl` and `/etc/vault.d/node.env`, and exits. Systemd ordering then starts Vault, bootstrap, health, and snapshots. User-data only writes `/etc/vault.d/vault-utils.env`. Override with `ami` when using a different architecture.
+On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/cloud.hcl` and `/etc/vault.d/node.env`, and exits. Systemd ordering then starts Vault, bootstrap, health, and snapshots. User-data only writes `/etc/vault.d/vault-utils.env`.
 
 ## Troubleshooting
 
@@ -388,6 +391,22 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 | generate-root permission denied | Vault 2.0 needs the operator token. See [Break-glass](#break-glass). |
 | Permission denied on tenant secrets | Expected for provisioning |
 | Everything denied | Audit volume full or unwritable |
+
+## App access
+
+`nullstone/aws-vault-access` connects an app to `aws-ec2-vault-cluster`.
+
+Connect `vault` to the cluster. The app module must expose `security_group_id` and its IAM role name.
+
+`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. The app receives `VAULT_ADDR` and `VAULT_ROLE`. During apply the capability calls the cluster function, which binds only that IAM role to that role.
+
+The app does not receive a Vault token. At startup it logs in with its IAM role:
+
+```bash
+vault login -method=aws role="$VAULT_ROLE"
+```
+
+A login as any other role is denied. The operator token is not injected.
 
 ## Security
 

@@ -93,6 +93,17 @@ data "aws_iam_policy_document" "this" {
     actions   = ["ec2:DescribeInstances"]
     resources = ["*"]
   }
+
+  statement {
+    sid    = "VaultAwsAuth"
+    effect = "Allow"
+    actions = [
+      "iam:GetRole",
+      "iam:GetUser",
+      "iam:GetInstanceProfile",
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "this" {

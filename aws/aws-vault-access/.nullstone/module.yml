@@ -1,0 +1,17 @@
+org_name: nullstone
+name: aws-vault-access
+friendly_name: Vault Access
+description: Grants an application access to a Vault cluster on AWS
+category: capability
+subcategory: datastores
+provider_types:
+  - aws
+platform: vault
+subplatform: ""
+type: capability/vault-access/aws
+appCategories:
+  - container
+  - serverless
+  - server
+is_public: true
+tool_name: opentofu
