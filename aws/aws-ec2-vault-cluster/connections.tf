@@ -53,4 +53,10 @@ locals {
   user_vault_addr = local.user_fqdn != "" ? "${local.vault_scheme}://${local.user_fqdn}:${local.vault_api_port}" : ""
   # The NLB certificate names the user-facing host, never vault.internal.
   tls_server_name = local.nlb_tls ? local.user_fqdn : ""
+
+  # Datastore contract. The user-facing name when a subdomain is connected, else vault.internal.
+  db_hostname  = local.user_fqdn != "" ? local.user_fqdn : local.vault_fqdn
+  db_endpoint  = "vault://${local.db_hostname}:${local.vault_api_port}"
+  private_urls = tolist(["${local.vault_addr}/ui/"])
+  public_urls  = local.user_vault_addr != "" ? ["${local.user_vault_addr}/ui/"] : []
 }

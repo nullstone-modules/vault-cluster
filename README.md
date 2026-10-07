@@ -144,6 +144,8 @@ vault status
 
 PowerShell: `vault-utils env ... | Out-String | Invoke-Expression`. `--internal` uses `vault.internal` instead of the user-facing name. A warning on stderr means Vault is unreachable from this machine. Any other Nullstone workspace is refused.
 
+The web UI is at `$VAULT_ADDR/ui` on every target. Sign in with a token; root is revoked at bootstrap, so use the operator or provisioning token.
+
 Without `VAULT_TOKEN`, `vault-utils tenants`, `snapshot take|restore`, and `health` use the token saved by `vault login` (the configured `token_helper`, else `~/.vault-token`).
 
 ## Commands
