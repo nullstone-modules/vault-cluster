@@ -15,10 +15,11 @@ EOF
 
 variable "instance_type" {
   type        = string
-  default     = "t3.micro"
+  default     = "t3.small"
   description = <<EOF
 Instance Type that dictates CPU, Memory, network bandwidth, and file storage type and bandwidth.
 See https://aws.amazon.com/ec2/instance-types/ for EC2 instance types.
+Vault locks its binary in memory; 2 GB is the floor. A 1 GB instance is OOM-killed a few minutes after boot.
 EOF
 }
 

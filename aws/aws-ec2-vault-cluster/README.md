@@ -16,7 +16,7 @@ Self-hosted Vault CE on an EC2 Auto Scaling Group: Raft storage, KMS auto-unseal
 | Name | Default | Purpose |
 |---|---|---|
 | `cluster_size` | `1` | Odd number of nodes |
-| `instance_type` | `t3.micro` | |
+| `instance_type` | `t3.small` | 2 GB floor; 1 GB is OOM-killed |
 | `ami`, `ami_owner` | latest `nullstone-vault` AMI from `522657839841` | Set `ami_owner = "self"` when this account bakes it |
 | `backup_schedule` | empty | Cron for S3 snapshots; empty disables |
 | `protect_platform_secrets` | `true` | `prevent_destroy` on the token secrets; set false before destroying the workspace |

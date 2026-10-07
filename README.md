@@ -419,7 +419,7 @@ To plan against real connections:
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
 4. In the plan, expect IAM, four Secrets Manager secrets (`init`, `provisioning`, `operator`, `apps-auth`; `protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A connected subdomain adds a user-facing cert (SNI) and alias. A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use output `vault_addr` (or `user_vault_addr`) with `tls_server_name`. The NLB terminates TLS only with a connected subdomain; Vault nodes listen HTTP.
 
-Bake the node AMI (x86_64, matches default `t3.micro`) from `vault-node/`:
+Bake the node AMI (x86_64, matches default `t3.small`) from `vault-node/`:
 
 ```bash
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o vault-node/vault-utils ./cmd/vault-utils

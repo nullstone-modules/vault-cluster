@@ -1,3 +1,9 @@
+# 0.4.1
+
+Module: `aws-ec2-vault-cluster` 0.4.1. No new AMI. A cluster that left `instance_type` unset rolls to the new size on its next apply.
+
+* Default `instance_type` is `t3.small`. Vault runs with mlock on and pins its binary in RAM; on a 1 GB `t3.micro` the kernel OOM-killed Vault about six minutes after boot, before bootstrap finished.
+
 # 0.4.0
 
 Module: `aws-ec2-vault-cluster` 0.4.0. Needs a fresh node AMI. The operator policy gains `sys/step-down` and `sys/storage/raft/remove-peer`; a cluster bootstrapped before this release must rewrite it with a break-glass root before the leave step works. A launch-template change rolls the nodes.
