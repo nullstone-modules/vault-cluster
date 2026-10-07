@@ -95,6 +95,26 @@ data "aws_iam_policy_document" "this" {
   }
 
   statement {
+    sid       = "LifecycleState"
+    effect    = "Allow"
+    actions   = ["autoscaling:DescribeAutoScalingInstances"]
+    resources = ["*"]
+  }
+
+  # The group name is unknown until it exists, so the hook permission is scoped by the cluster tag instead.
+  statement {
+    sid       = "LifecycleHooks"
+    effect    = "Allow"
+    actions   = ["autoscaling:CompleteLifecycleAction"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "autoscaling:ResourceTag/${local.vault_cluster_tag_key}"
+      values   = [local.vault_cluster_tag_value]
+    }
+  }
+
+  statement {
     sid    = "VaultAwsAuth"
     effect = "Allow"
     actions = [

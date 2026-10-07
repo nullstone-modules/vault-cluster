@@ -46,7 +46,7 @@ Implemented:
 - Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
 - Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
 - `bootstrap aws` (KMS auto-unseal, Secrets Manager tokens), health on 8210, S3 snapshots and S3 restore
-- AWS AMI, user-data, internal NLB (TLS 8200, health 8210), `vault.internal`, optional user-facing subdomain SNI, ASG (`cluster_size`), rolling instance refresh on launch-template change
+- AWS AMI, user-data, internal NLB (TLS 8200, health 8210), `vault.internal`, optional user-facing subdomain SNI, ASG (`cluster_size`), rolling instance refresh on launch-template change gated by lifecycle hooks (join before the old node leaves; leave the peer set before termination)
 
 Not implemented:
 

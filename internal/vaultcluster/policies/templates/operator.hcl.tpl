@@ -1,4 +1,5 @@
-# Local operator: health and config read. Can start generate-root (recovery keys still required). Not a tenant secret reader. No restore.
+# Local operator: health and config read. Can start generate-root (recovery keys still required). Steps down and
+# leaves the Raft peer set on scale-in. Not a tenant secret reader. No restore.
 path "sys/health" {
   capabilities = ["read", "sudo"]
 }
@@ -101,6 +102,14 @@ path "sys/storage/raft/configuration" {
 
 path "sys/storage/raft/autopilot/state" {
   capabilities = ["read"]
+}
+
+path "sys/step-down" {
+  capabilities = ["update", "sudo"]
+}
+
+path "sys/storage/raft/remove-peer" {
+  capabilities = ["update", "sudo"]
 }
 
 path "auth/token/lookup-self" {

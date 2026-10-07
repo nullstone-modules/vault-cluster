@@ -22,6 +22,7 @@ install -m 0644 /tmp/vault-image/vault-configure.service /etc/systemd/system/vau
 install -m 0644 /tmp/vault-image/vault-bootstrap.service /etc/systemd/system/vault-bootstrap.service
 install -m 0644 /tmp/vault-image/vault-health.service /etc/systemd/system/vault-health.service
 install -m 0644 /tmp/vault-image/vault-snapshot.service /etc/systemd/system/vault-snapshot.service
+install -m 0644 /tmp/vault-image/vault-lifecycle.service /etc/systemd/system/vault-lifecycle.service
 
 bash -n /usr/local/bin/vault-node-configure
 /usr/local/bin/vault version
@@ -34,4 +35,5 @@ systemctl enable \
   vault.service \
   vault-bootstrap.service \
   vault-health.service \
-  vault-snapshot.service
+  vault-snapshot.service \
+  vault-lifecycle.service

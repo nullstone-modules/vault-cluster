@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -9,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/vault/api"
+	"github.com/nullstone-modules/vault-cluster/internal/aws/asg"
 	"github.com/nullstone-modules/vault-cluster/internal/aws/s3"
 	"github.com/nullstone-modules/vault-cluster/internal/aws/secretsmanager"
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster"
@@ -45,6 +49,7 @@ Commands:
   snapshot schedule                 Cron loop (BACKUP_SCHEDULE; empty disables)
   health                            Print seal status
   health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
+  lifecycle                         ASG node: continue the launch hook once a caught-up voter; leave Raft before termination
   env --org --stack --env --block   Print shell settings for a Nullstone Vault cluster workspace
 
 Without VAULT_TOKEN, tenants, envs, snapshot take|restore, and health use the token from "vault login".
@@ -87,6 +92,8 @@ func run(cmd string, args []string) error {
 			return runHealthServe(c)
 		}
 		return c.Health()
+	case "lifecycle":
+		return runLifecycle(c)
 	default:
 		usage()
 		return fmt.Errorf("unknown command %q", cmd)
@@ -501,4 +508,50 @@ func getenv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+func runLifecycle(c *vaultcluster.Client) error {
+	nodeID := os.Getenv("VAULT_RAFT_NODE_ID")
+	if nodeID == "" {
+		return fmt.Errorf("VAULT_RAFT_NODE_ID is required for lifecycle")
+	}
+	hooks, err := asg.New(nodeID)
+	if err != nil {
+		return err
+	}
+	log.Printf("lifecycle watching instance %s", nodeID)
+	return vaultcluster.RunLifecycle(context.Background(), hooks, &lifecycleNode{c: c, nodeID: nodeID}, vaultcluster.LifecycleOptions{Logf: log.Printf})
+}
+
+// lifecycleNode loads the operator token lazily: on a fresh cluster it does not exist until bootstrap
+// finishes, and on a rebuilt one Secrets Manager may still hold the previous cluster's token.
+type lifecycleNode struct {
+	c        *vaultcluster.Client
+	nodeID   string
+	renewing bool
+}
+
+func (n *lifecycleNode) withToken(op func() error) error {
+	if err := useOperatorToken(n.c); err != nil {
+		return err
+	}
+	if !n.renewing {
+		n.renewing = true
+		go n.c.RenewToken(tokenRenewInterval, nil)
+	}
+	err := op()
+	var re *api.ResponseError
+	if errors.As(err, &re) && re.StatusCode == 403 {
+		n.c.Cfg.Token = ""
+		n.c.API.ClearToken()
+	}
+	return err
+}
+
+func (n *lifecycleNode) Ready() error {
+	return n.withToken(func() error { return n.c.NodeHealthOK(n.nodeID) })
+}
+
+func (n *lifecycleNode) Leave() error {
+	return n.withToken(func() error { return n.c.LeaveRaft(n.nodeID) })
 }

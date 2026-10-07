@@ -22,6 +22,8 @@ resource "aws_autoscaling_group" "this" {
     strategy = "Rolling"
 
     preferences {
+      # Health after the launch hook continues; the hook, not warmup, is what proves the node joined.
+      instance_warmup        = 60
       min_healthy_percentage = 100
       max_healthy_percentage = local.asg_max_healthy_percentage
       auto_rollback          = true
@@ -40,4 +42,24 @@ resource "aws_autoscaling_group" "this" {
     value               = local.vault_cluster_tag_value
     propagate_at_launch = true
   }
+}
+
+# A new instance waits here until vault-utils lifecycle reports it an unsealed, caught-up Raft voter. One that
+# never joins is abandoned, which fails the instance refresh and rolls it back with the old node untouched.
+resource "aws_autoscaling_lifecycle_hook" "join" {
+  name                   = "vault-join"
+  autoscaling_group_name = aws_autoscaling_group.this.name
+  lifecycle_transition   = "autoscaling:EC2_INSTANCE_LAUNCHING"
+  default_result         = "ABANDON"
+  heartbeat_timeout      = 1800
+}
+
+# A departing instance waits here until it has left the Raft peer set, so the remaining nodes keep quorum.
+# It terminates either way; vault-utils logs the attempt.
+resource "aws_autoscaling_lifecycle_hook" "leave" {
+  name                   = "vault-leave"
+  autoscaling_group_name = aws_autoscaling_group.this.name
+  lifecycle_transition   = "autoscaling:EC2_INSTANCE_TERMINATING"
+  default_result         = "CONTINUE"
+  heartbeat_timeout      = 300
 }

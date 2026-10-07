@@ -1,7 +1,8 @@
-# 0.3.1
+# 0.4.0
 
-Module: `aws-ec2-vault-cluster` 0.3.1. Launch-template change; nodes roll.
+Module: `aws-ec2-vault-cluster` 0.4.0. Needs a fresh node AMI. The operator policy gains `sys/step-down` and `sys/storage/raft/remove-peer`; a cluster bootstrapped before this release must rewrite it with a break-glass root before the leave step works. A launch-template change rolls the nodes.
 
+* A rolling instance refresh is safe on a one-node cluster. A launch lifecycle hook (`vault-join`) holds a new node until `vault-utils lifecycle` reports it an unsealed, caught-up Raft voter; a node that never joins is abandoned after 30 minutes, which fails the refresh and rolls it back with the old node untouched. A terminate hook (`vault-leave`) holds a departing node until it has stepped down and removed itself from the peer set, so the survivor keeps quorum. Before this, the refresh counted a new node healthy on EC2 status alone and terminated the only copy of the data.
 * Nodes advertise `api_addr` as the URL clients use: `user_vault_addr` when a subdomain is connected, else `vault_addr`. It was always `https://vault.internal:8200`, so a standby redirect sent browsers to an origin the NLB certificate does not name and the web UI failed with "The request failed and the interceptors did not return an alternative response".
 
 # 0.2.0

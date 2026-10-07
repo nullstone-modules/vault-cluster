@@ -146,6 +146,11 @@ run "is_not_shared_in_a_pipeline_env" {
     condition     = output.shared == false && strcontains(base64decode(aws_launch_template.this.user_data), "SHARED_ENVS=false")
     error_message = "A cluster in any env but the shared previews env is unshared and tells its nodes so."
   }
+
+  assert {
+    condition     = aws_autoscaling_lifecycle_hook.join.default_result == "ABANDON" && aws_autoscaling_lifecycle_hook.leave.default_result == "CONTINUE"
+    error_message = "A node that never joins is abandoned so the refresh rolls back; a departing node terminates after trying to leave."
+  }
 }
 
 run "is_not_shared_in_a_preview_env" {

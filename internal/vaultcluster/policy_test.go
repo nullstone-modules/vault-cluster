@@ -18,8 +18,8 @@ func goldenConfig(shared bool) Config {
 	return Config{KVMount: "kv", TenantPrefix: "customers", EnvPrefix: "envs", DatabaseMount: "database", AuthMount: "approle", SharedEnvs: shared}
 }
 
-// The unshared goldens are the 0.1.x policies. They must never change: an unshared cluster is unaffected
-// by shared-env support. The shared goldens document what a shared cluster applies.
+// The unshared goldens must not move for shared-env support: an unshared cluster is unaffected by it.
+// Any other change to a policy is deliberate and updates both sets. The shared goldens document what a shared cluster applies.
 func TestRenderedPoliciesMatchGoldens(t *testing.T) {
 	for _, mode := range []struct {
 		dir    string
