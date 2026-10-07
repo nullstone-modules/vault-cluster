@@ -121,3 +121,28 @@ run "uses_https_with_a_subdomain" {
     error_message = "With TLS, vault.internal needs the user-facing name for certificate verification."
   }
 }
+
+run "is_not_shared_outside_previews_shared" {
+  command = plan
+
+  assert {
+    condition     = output.shared == false && strcontains(base64decode(aws_launch_template.this.user_data), "SHARED_ENVS=false")
+    error_message = "A cluster in any env but previews-shared is unshared and tells its nodes so."
+  }
+}
+
+run "is_shared_in_previews_shared" {
+  command = plan
+
+  override_data {
+    target = data.ns_workspace.this
+    values = {
+      env_name = "previews-shared"
+    }
+  }
+
+  assert {
+    condition     = output.shared == true && strcontains(base64decode(aws_launch_template.this.user_data), "SHARED_ENVS=true")
+    error_message = "A cluster in previews-shared is shared and its nodes scope tenants per env."
+  }
+}

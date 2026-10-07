@@ -11,6 +11,7 @@ locals {
     snapshot_bucket_name    = local.snapshot_bucket_name
     snapshot_prefix         = local.snapshot_prefix
     backup_schedule         = var.backup_schedule
+    shared                  = local.shared
     vault_api_addr          = "https://${trimsuffix(aws_route53_record.vault.fqdn, ".")}:${local.vault_api_port}"
   })
 }

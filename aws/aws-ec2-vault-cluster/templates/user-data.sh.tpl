@@ -13,6 +13,7 @@ VAULT_APPS_AUTH_SECRET_ARN=${apps_auth_secret_arn}
 SNAPSHOT_BUCKET=${snapshot_bucket_name}
 SNAPSHOT_PREFIX=${snapshot_prefix}
 BACKUP_SCHEDULE="${backup_schedule}"
+SHARED_ENVS=${shared}
 AUDIT_LOG_PATH=/opt/vault/audit/audit.log
 AWS_REGION=${aws_region}
 UNSEAL_KMS_KEY_ARN=${unseal_kms_key_arn}
