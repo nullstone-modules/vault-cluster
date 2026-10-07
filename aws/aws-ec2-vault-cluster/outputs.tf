@@ -77,3 +77,23 @@ output "tls_server_name" {
   value       = local.tls_server_name
   description = "string ||| Name to verify in the NLB certificate when connecting to vault_addr, or empty without TLS."
 }
+
+output "db_hostname" {
+  value       = local.db_hostname
+  description = "string ||| Hostname of the Vault API: the user-facing name, or vault.internal without a subdomain."
+}
+
+output "db_port" {
+  value       = local.vault_api_port
+  description = "number ||| Port of the Vault API."
+}
+
+output "db_endpoint" {
+  value       = local.db_endpoint
+  description = "string ||| Endpoint to reach Vault as vault://<hostname>:<port>."
+}
+
+output "ui_endpoint" {
+  value       = local.ui_endpoint
+  description = "string ||| URL of the Vault web UI."
+}

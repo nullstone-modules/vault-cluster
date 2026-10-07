@@ -1,6 +1,7 @@
 # 0.1.2
 
 * Node AMI serves the Vault web UI at `$VAULT_ADDR/ui`. Needs a fresh AMI.
+* `aws-ec2-vault-cluster` adds datastore outputs `db_hostname`, `db_port`, `db_endpoint` (`vault://<host>:8200`), and `ui_endpoint`. The host is the user-facing name, or vault.internal without a subdomain.
 
 # 0.1.1
 
