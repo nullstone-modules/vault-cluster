@@ -42,7 +42,7 @@ jobs:
       NULLSTONE_BLOCK: aws-packer-builder
       NULLSTONE_ENV: local
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: nullstone-io/setup-nullstone-action@v0
 

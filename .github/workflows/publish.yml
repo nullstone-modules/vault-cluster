@@ -1,0 +1,45 @@
+# Publish both AWS modules to the Nullstone registry at the tag's version.
+#
+# Trigger: push of a v* tag (v0.4.0 publishes 0.4.0 for both modules).
+# Includes come from each module's .nullstone/module.yml.
+#
+# Repository configuration:
+#   secret  NULLSTONE_API_KEY
+name: publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency: publish
+
+env:
+  NULLSTONE_ORG: nullstone
+  NULLSTONE_API_KEY: ${{ secrets.NULLSTONE_API_KEY }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - aws/aws-ec2-vault-cluster
+          - aws/aws-vault-access
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: nullstone-io/setup-nullstone-action@v0
+
+      - name: Version from tag
+        run: echo "MODULE_VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_ENV"
+
+      - name: Publish ${{ matrix.module }}
+        working-directory: ${{ matrix.module }}
+        run: |
+          nullstone modules register --if missing
+          nullstone modules publish --version="$MODULE_VERSION"
