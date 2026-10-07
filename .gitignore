@@ -7,6 +7,7 @@
 *.md
 !/README.md
 !/CHANGELOG.md
+!/aws/*/README.md
 docs/
 runbooks/
 examples/
