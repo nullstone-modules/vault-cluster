@@ -100,6 +100,11 @@ run "uses_http_without_a_subdomain" {
     condition     = output.vault_addr == "http://vault.internal:8200" && output.user_vault_addr == "" && output.tls_server_name == "" && output.db_hostname == "vault.internal" && output.db_port == 8200 && output.db_endpoint == "vault://vault.internal:8200" && output.private_urls == tolist(["http://vault.internal:8200/ui/"]) && length(output.public_urls) == 0
     error_message = "Without a subdomain the NLB has no TLS listener."
   }
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this.user_data), "VAULT_API_ADDR=http://vault.internal:8200\n")
+    error_message = "Without TLS, nodes advertise the plain http address clients use."
+  }
 }
 
 run "uses_https_with_a_subdomain" {
@@ -126,6 +131,11 @@ run "uses_https_with_a_subdomain" {
   assert {
     condition     = output.vault_addr == "https://vault.internal:8200" && output.user_vault_addr == "https://vault.acme.example.com:8200" && output.tls_server_name == "vault.acme.example.com" && output.db_hostname == "vault.acme.example.com" && output.db_endpoint == "vault://vault.acme.example.com:8200" && output.private_urls == tolist(["https://vault.internal:8200/ui/"]) && output.public_urls == tolist(["https://vault.acme.example.com:8200/ui/"])
     error_message = "With TLS, vault.internal needs the user-facing name for certificate verification."
+  }
+
+  assert {
+    condition     = strcontains(base64decode(aws_launch_template.this.user_data), "VAULT_API_ADDR=https://vault.acme.example.com:8200\n")
+    error_message = "With a subdomain, nodes advertise the user-facing origin so redirects stay on the certificate name."
   }
 }
 

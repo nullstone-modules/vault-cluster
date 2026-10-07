@@ -66,6 +66,8 @@ The function's `apps-auth` token writes app auth roles and, on a shared cluster,
 
 Per-tenant CLI on a shared cluster takes `--env`; on an unshared one `--env` is refused.
 
+Nodes advertise `api_addr` as `user_vault_addr` when a subdomain is connected, else `vault_addr`. Redirects from a standby therefore land on the origin clients already use. Clients on `vault.internal` set `VAULT_TLS_SERVER_NAME` to `tls_server_name`.
+
 ## Outputs
 
 `vault_addr`, `user_vault_addr`, `tls_server_name`, `vault_fqdn`, `user_fqdn`, `vault_api_port`, `nlb_security_group_id`, `admin_function_name`, `shared`, `operator_secret_arn`, `provisioning_secret_arn`, `db_hostname`, `db_port`, `db_endpoint`, `private_urls`, `public_urls`, plus node identifiers (`role_name`, `instance_profile_name`, `security_group_id`, `autoscaling_group_name`, `ami_id`).

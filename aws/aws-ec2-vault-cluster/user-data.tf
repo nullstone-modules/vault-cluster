@@ -12,6 +12,9 @@ locals {
     snapshot_prefix         = local.snapshot_prefix
     backup_schedule         = var.backup_schedule
     shared                  = local.shared
-    vault_api_addr          = "https://${trimsuffix(aws_route53_record.vault.fqdn, ".")}:${local.vault_api_port}"
+    # api_addr is the URL Vault puts in redirects and sys/leader. It must be the origin clients use:
+    # the user-facing name when a subdomain is connected (the NLB certificate names only that host),
+    # else vault.internal with the scheme the NLB listens on.
+    vault_api_addr = local.user_vault_addr != "" ? local.user_vault_addr : local.vault_addr
   })
 }

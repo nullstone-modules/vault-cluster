@@ -1,3 +1,9 @@
+# 0.3.1
+
+Module: `aws-ec2-vault-cluster` 0.3.1. Launch-template change; nodes roll.
+
+* Nodes advertise `api_addr` as the URL clients use: `user_vault_addr` when a subdomain is connected, else `vault_addr`. It was always `https://vault.internal:8200`, so a standby redirect sent browsers to an origin the NLB certificate does not name and the web UI failed with "The request failed and the interceptors did not return an alternative response".
+
 # 0.2.0
 
 Modules: `aws-ec2-vault-cluster` 0.2.0, `aws-vault-access` 0.3.0. Needs `vault-admin` 0.3.0 and a fresh node AMI. Nothing changes for a cluster outside the shared previews env.
