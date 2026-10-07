@@ -194,7 +194,7 @@ Tenant IDs: `^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$` (3-32 characters). Rejected: `
 
 ### Shared cluster
 
-A cluster launched in the Nullstone env `previews-shared` serves every preview env. Its output `shared` is true, its nodes run with `SHARED_ENVS=true`, and every tenant belongs to one env:
+A cluster launched in the stack's shared previews env (Nullstone env type `PreviewsSharedEnv`) serves every preview env. Its output `shared` is true, its nodes run with `SHARED_ENVS=true`, and every tenant belongs to one env:
 
 ```
 kv/data/envs/{env}/customers/{tenant_id}/*
@@ -478,7 +478,7 @@ The broker token reads no secrets. The tenant token is good for that tenant only
 
 ### Shared cluster in Nullstone
 
-Launch the cluster block in the `previews-shared` env. In `.nullstone/previews.yml`, point each app's capability at it; everywhere else the app uses its own env's cluster:
+Launch the cluster block in the stack's shared previews env (named `previews-shared` below). In `.nullstone/previews.yml`, point each app's capability at it; everywhere else the app uses its own env's cluster:
 
 ```yaml
 version: "0.1"

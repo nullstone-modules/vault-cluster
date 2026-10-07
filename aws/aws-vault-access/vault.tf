@@ -12,7 +12,7 @@ locals {
   tls_server_name       = try(data.ns_connection.vault.outputs.tls_server_name, "")
 }
 
-# shared is true for a cluster in previews-shared (0.2.0+). Older clusters have no such output: not shared.
+# shared is true for a cluster in the shared previews env (0.2.0+). Older clusters have no such output: not shared.
 locals {
   shared = try(tobool(data.ns_connection.vault.outputs.shared), false)
   env    = local.shared ? data.ns_workspace.this.env_name : ""

@@ -11,6 +11,13 @@ mock_provider "ns" {
     }
   }
 
+  mock_data "ns_env" {
+    defaults = {
+      name = "prod"
+      type = "PipelineEnv"
+    }
+  }
+
   mock_data "ns_connection" {
     defaults = {
       outputs = {
@@ -122,27 +129,43 @@ run "uses_https_with_a_subdomain" {
   }
 }
 
-run "is_not_shared_outside_previews_shared" {
+run "is_not_shared_in_a_pipeline_env" {
   command = plan
 
   assert {
     condition     = output.shared == false && strcontains(base64decode(aws_launch_template.this.user_data), "SHARED_ENVS=false")
-    error_message = "A cluster in any env but previews-shared is unshared and tells its nodes so."
+    error_message = "A cluster in any env but the shared previews env is unshared and tells its nodes so."
   }
 }
 
-run "is_shared_in_previews_shared" {
+run "is_not_shared_in_a_preview_env" {
   command = plan
 
   override_data {
-    target = data.ns_workspace.this
+    target = data.ns_env.this
     values = {
-      env_name = "previews-shared"
+      type = "PreviewEnv"
+    }
+  }
+
+  assert {
+    condition     = output.shared == false
+    error_message = "A preview env's own cluster is unshared."
+  }
+}
+
+run "is_shared_in_the_shared_previews_env" {
+  command = plan
+
+  override_data {
+    target = data.ns_env.this
+    values = {
+      type = "PreviewsSharedEnv"
     }
   }
 
   assert {
     condition     = output.shared == true && strcontains(base64decode(aws_launch_template.this.user_data), "SHARED_ENVS=true")
-    error_message = "A cluster in previews-shared is shared and its nodes scope tenants per env."
+    error_message = "A cluster in the shared previews env is shared and its nodes scope tenants per env."
   }
 }

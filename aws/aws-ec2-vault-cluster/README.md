@@ -23,7 +23,7 @@ Self-hosted Vault CE on an EC2 Auto Scaling Group: Raft storage, KMS auto-unseal
 
 ## Shared cluster
 
-Launched in the Nullstone env `previews-shared`, the cluster is shared: output `shared` is true and the nodes run with `SHARED_ENVS=true`. Every tenant then belongs to an env. Anywhere else the cluster is unshared and nothing below changes from 0.1.x. A cluster cannot switch modes; launch a new one.
+Launched in the stack's shared previews env (Nullstone env type `PreviewsSharedEnv`), the cluster is shared: output `shared` is true and the nodes run with `SHARED_ENVS=true`. Every tenant then belongs to an env. Anywhere else the cluster is unshared and nothing below changes from 0.1.x. A cluster cannot switch modes; launch a new one.
 
 ## Where a tenant's secrets live
 

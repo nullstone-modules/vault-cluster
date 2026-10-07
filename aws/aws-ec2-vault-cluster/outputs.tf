@@ -105,5 +105,5 @@ output "public_urls" {
 
 output "shared" {
   value       = local.shared
-  description = "bool ||| True when this cluster runs in the previews-shared env and scopes every tenant's secrets under envs/<env>/."
+  description = "bool ||| True when this cluster runs in the shared previews env (Nullstone env type PreviewsSharedEnv) and scopes every tenant's secrets under envs/<env>/."
 }

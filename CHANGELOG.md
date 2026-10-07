@@ -1,8 +1,8 @@
 # 0.2.0
 
-Modules: `aws-ec2-vault-cluster` 0.2.0, `aws-vault-access` 0.3.0. Needs `vault-admin` 0.3.0 and a fresh node AMI. Nothing changes for a cluster outside `previews-shared`.
+Modules: `aws-ec2-vault-cluster` 0.2.0, `aws-vault-access` 0.3.0. Needs `vault-admin` 0.3.0 and a fresh node AMI. Nothing changes for a cluster outside the shared previews env.
 
-* A cluster launched in the `previews-shared` env is shared: output `shared = true`, and every tenant belongs to an env. Tenant roles are `<env>.<tenant>`, secrets live under `kv/data/envs/<env>/customers/<tenant>/`, and an app's broker can only log in as its own env's tenants. The cluster function binds each app role to its env through an identity entity; provisioning does the same for tenant roles.
+* A cluster launched in the shared previews env (Nullstone env type `PreviewsSharedEnv`) is shared: output `shared = true`, and every tenant belongs to an env. Tenant roles are `<env>.<tenant>`, secrets live under `kv/data/envs/<env>/customers/<tenant>/`, and an app's broker can only log in as its own env's tenants. The cluster function binds each app role to its env through an identity entity; provisioning does the same for tenant roles.
 * `aws-vault-access` passes the app's env to the function on a shared cluster and injects `VAULT_ENV` (empty on an unshared cluster).
 * `vault-utils tenants create|destroy` take `--env` (required on a shared cluster, refused elsewhere). `tenants list` shows the env. New `envs list` and `envs destroy <env> --yes [--purge-secrets]`. `vault-utils env` prints `SHARED_ENVS=true` for a shared cluster.
 
