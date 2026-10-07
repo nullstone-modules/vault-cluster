@@ -1,3 +1,7 @@
+# 0.1.2
+
+* Node AMI serves the Vault web UI at `$VAULT_ADDR/ui`. Needs a fresh AMI.
+
 # 0.1.1
 
 * `aws-ec2-vault-cluster` plans on a fresh workspace: AMI looked up by name, NLB listener count known at plan time, vault-admin 0.2.2 (Secrets Manager egress).

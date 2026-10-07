@@ -1,4 +1,4 @@
-ui = false
+ui = true
 
 disable_mlock = false
 
