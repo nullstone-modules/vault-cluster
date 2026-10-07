@@ -43,6 +43,15 @@ func TestSettingsFromOutputs(t *testing.T) {
 			"vault_fqdn": "vault.internal", "vault_api_port": "8443",
 		}, want: Settings{Addr: "http://vault.internal:8443"}, wantNote: true},
 		{name: "not applied", outputs: map[string]any{}, wantErr: true},
+		{name: "shared cluster", outputs: map[string]any{
+			"vault_fqdn": "vault.internal", "vault_api_port": "8200", "vault_addr": "http://vault.internal:8200", "shared": true,
+		}, want: Settings{Addr: "http://vault.internal:8200", SharedEnvs: true}, wantNote: true},
+		{name: "shared as string", outputs: map[string]any{
+			"vault_addr": "http://vault.internal:8200", "shared": "true",
+		}, want: Settings{Addr: "http://vault.internal:8200", SharedEnvs: true}, wantNote: true},
+		{name: "unshared cluster", outputs: map[string]any{
+			"vault_addr": "http://vault.internal:8200", "shared": false,
+		}, want: Settings{Addr: "http://vault.internal:8200"}, wantNote: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -72,14 +81,16 @@ func TestRender(t *testing.T) {
 		in    Settings
 		want  string
 	}{
-		{"bash", withSNI, "export VAULT_ADDR='https://vault.internal:8200'\nexport VAULT_TLS_SERVER_NAME='vault.acme.example.com'\n"},
-		{"zsh", plain, "export VAULT_ADDR='http://vault.internal:8200'\nunset VAULT_TLS_SERVER_NAME\n"},
-		{"fish", withSNI, "set -gx VAULT_ADDR 'https://vault.internal:8200';\nset -gx VAULT_TLS_SERVER_NAME 'vault.acme.example.com';\n"},
-		{"fish", plain, "set -gx VAULT_ADDR 'http://vault.internal:8200';\nset -e VAULT_TLS_SERVER_NAME;\n"},
-		{"powershell", withSNI, "$env:VAULT_ADDR = 'https://vault.internal:8200'\n$env:VAULT_TLS_SERVER_NAME = 'vault.acme.example.com'\n"},
-		{"powershell", plain, "$env:VAULT_ADDR = 'http://vault.internal:8200'\nRemove-Item Env:VAULT_TLS_SERVER_NAME -ErrorAction SilentlyContinue\n"},
-		{"bash", Settings{Addr: "http://a'b"}, "export VAULT_ADDR='http://a'\\''b'\nunset VAULT_TLS_SERVER_NAME\n"},
-		{"powershell", Settings{Addr: "http://a'b"}, "$env:VAULT_ADDR = 'http://a''b'\nRemove-Item Env:VAULT_TLS_SERVER_NAME -ErrorAction SilentlyContinue\n"},
+		{"bash", withSNI, "export VAULT_ADDR='https://vault.internal:8200'\nexport VAULT_TLS_SERVER_NAME='vault.acme.example.com'\nunset SHARED_ENVS\n"},
+		{"zsh", plain, "export VAULT_ADDR='http://vault.internal:8200'\nunset VAULT_TLS_SERVER_NAME\nunset SHARED_ENVS\n"},
+		{"fish", withSNI, "set -gx VAULT_ADDR 'https://vault.internal:8200';\nset -gx VAULT_TLS_SERVER_NAME 'vault.acme.example.com';\nset -e SHARED_ENVS;\n"},
+		{"fish", plain, "set -gx VAULT_ADDR 'http://vault.internal:8200';\nset -e VAULT_TLS_SERVER_NAME;\nset -e SHARED_ENVS;\n"},
+		{"powershell", withSNI, "$env:VAULT_ADDR = 'https://vault.internal:8200'\n$env:VAULT_TLS_SERVER_NAME = 'vault.acme.example.com'\nRemove-Item Env:SHARED_ENVS -ErrorAction SilentlyContinue\n"},
+		{"powershell", plain, "$env:VAULT_ADDR = 'http://vault.internal:8200'\nRemove-Item Env:VAULT_TLS_SERVER_NAME -ErrorAction SilentlyContinue\nRemove-Item Env:SHARED_ENVS -ErrorAction SilentlyContinue\n"},
+		{"bash", Settings{Addr: "http://a'b"}, "export VAULT_ADDR='http://a'\\''b'\nunset VAULT_TLS_SERVER_NAME\nunset SHARED_ENVS\n"},
+		{"powershell", Settings{Addr: "http://a'b"}, "$env:VAULT_ADDR = 'http://a''b'\nRemove-Item Env:VAULT_TLS_SERVER_NAME -ErrorAction SilentlyContinue\nRemove-Item Env:SHARED_ENVS -ErrorAction SilentlyContinue\n"},
+		{"bash", Settings{Addr: "http://vault.internal:8200", SharedEnvs: true}, "export VAULT_ADDR='http://vault.internal:8200'\nunset VAULT_TLS_SERVER_NAME\nexport SHARED_ENVS='true'\n"},
+		{"powershell", Settings{Addr: "http://vault.internal:8200", SharedEnvs: true}, "$env:VAULT_ADDR = 'http://vault.internal:8200'\nRemove-Item Env:VAULT_TLS_SERVER_NAME -ErrorAction SilentlyContinue\n$env:SHARED_ENVS = 'true'\n"},
 	}
 	for _, tt := range tests {
 		got, err := Render(tt.shell, tt.in)

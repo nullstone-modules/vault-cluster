@@ -1,11 +1,11 @@
 # Onboard/offboard tenants. Writes AppRole and database roles only; tenant policies are static (bootstrap).
 # allowed_parameters pins every role to the tenant policies and fixed SQL, so nothing written here
 # can carry a platform policy. Can mint any tenant's credentials; cannot read tenant secrets itself.
-path "auth/{{.ReaderMount}}/role" {
+path "auth/approle-reader/role" {
   capabilities = ["list"]
 }
 
-path "auth/{{.ReaderMount}}/role/*" {
+path "auth/approle-reader/role/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
   allowed_parameters = {
     "token_policies"     = ["tenant-reader"]
@@ -18,19 +18,19 @@ path "auth/{{.ReaderMount}}/role/*" {
   }
 }
 
-path "auth/{{.ReaderMount}}/role/+/role-id" {
+path "auth/approle-reader/role/+/role-id" {
   capabilities = ["read"]
 }
 
-path "auth/{{.ReaderMount}}/role/+/secret-id" {
+path "auth/approle-reader/role/+/secret-id" {
   capabilities = ["update"]
 }
 
-path "auth/{{.WriterMount}}/role" {
+path "auth/approle-writer/role" {
   capabilities = ["list"]
 }
 
-path "auth/{{.WriterMount}}/role/*" {
+path "auth/approle-writer/role/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
   allowed_parameters = {
     "token_policies"     = ["tenant-writer", "tenant-database"]
@@ -43,19 +43,19 @@ path "auth/{{.WriterMount}}/role/*" {
   }
 }
 
-path "auth/{{.WriterMount}}/role/+/role-id" {
+path "auth/approle-writer/role/+/role-id" {
   capabilities = ["read"]
 }
 
-path "auth/{{.WriterMount}}/role/+/secret-id" {
+path "auth/approle-writer/role/+/secret-id" {
   capabilities = ["update"]
 }
 
-path "{{.DatabaseMount}}/roles/tenant-*" {
+path "database/roles/tenant-*" {
   capabilities = ["create", "read", "update", "delete", "list"]
   allowed_parameters = {
     "db_name"             = []
-    "creation_statements" = [{{.DBCreationStatements}}]
+    "creation_statements" = ["CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';", "GRANT app_readonly TO \"{{name}}\";", "GRANT app_readwrite TO \"{{name}}\";"]
     "default_ttl"         = []
     "max_ttl"             = []
   }
@@ -77,7 +77,7 @@ path "auth/token/renew-self" {
   capabilities = ["update"]
 }
 
-path "{{.KVMount}}/*" {
+path "kv/*" {
   capabilities = ["deny"]
 }
 
@@ -101,7 +101,7 @@ path "sys/audit-hash/*" {
   capabilities = ["deny"]
 }
 
-path "{{.DatabaseMount}}/creds/*" {
+path "database/creds/*" {
   capabilities = ["deny"]
 }
 
@@ -116,48 +116,7 @@ path "sys/auth/*" {
 path "auth/token/create*" {
   capabilities = ["deny"]
 }
-{{if .Shared}}
-# Shared cluster: tenants create writes one entity per tenant role (metadata env and tenant) and its alias.
-# policies and disabled are refused, so an entity can never carry more than its roles grant.
-path "identity/entity" {
-  capabilities = ["create", "update"]
-  denied_parameters = { "policies" = [], "disabled" = [] }
-}
 
-path "identity/entity/name/*" {
-  capabilities = ["read", "update", "delete"]
-  denied_parameters = { "policies" = [], "disabled" = [] }
-}
-
-path "identity/entity-alias" {
-  capabilities = ["create", "update"]
-}
-
-path "identity/entity-alias/id/*" {
-  capabilities = ["read", "delete"]
-}
-
-path "identity/lookup/entity" {
-  capabilities = ["update"]
-}
-
-path "identity/entity/merge" {
-  capabilities = ["deny"]
-}
-
-path "identity/group*" {
-  capabilities = ["deny"]
-}
-
-path "identity/oidc/*" {
-  capabilities = ["deny"]
-}
-
-path "identity/mfa/*" {
-  capabilities = ["deny"]
-}
-{{- else}}
 path "identity/*" {
   capabilities = ["deny"]
 }
-{{- end}}

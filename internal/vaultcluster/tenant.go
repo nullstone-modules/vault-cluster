@@ -16,39 +16,53 @@ const (
 	tenantSecretIDUses = 1
 )
 
-// CreateTenant writes the tenant's reader and writer AppRole roles (role name = tenant ID) and, with
-// credentials enabled, its database roles. Tenant policies are static, so nothing here writes a policy.
-// No credentials are issued: apps mint their own at login.
-func (c *Client) CreateTenant(tenantID string) error {
+// CreateTenant writes the tenant's reader and writer AppRole roles and, with credentials enabled, its
+// database roles. Tenant policies are static, so nothing here writes a policy. No credentials are issued:
+// apps mint their own at login.
+//
+// env is empty on an unshared cluster. On a shared cluster it is required: the roles are named env.tenant
+// and each gets an entity carrying env and tenant as metadata, which the tenant policies template.
+func (c *Client) CreateTenant(env, tenantID string) error {
 	if err := ValidateTenantID(tenantID); err != nil {
 		return err
 	}
-	if err := c.writeAppRole("reader", tenantID, []string{c.Cfg.TenantPolicy("reader")}); err != nil {
+	if err := c.Cfg.checkEnv(env); err != nil {
+		return err
+	}
+	role := c.Cfg.TenantRole(env, tenantID)
+	if err := c.writeAppRole("reader", role, []string{c.Cfg.TenantPolicy("reader")}); err != nil {
 		return err
 	}
 	writerPolicies := []string{c.Cfg.TenantPolicy("writer")}
 	if c.Cfg.EnableCredentials {
 		writerPolicies = append(writerPolicies, c.Cfg.TenantPolicy("database"))
 	}
-	if err := c.writeAppRole("writer", tenantID, writerPolicies); err != nil {
+	if err := c.writeAppRole("writer", role, writerPolicies); err != nil {
 		return err
+	}
+	if c.Cfg.SharedEnvs {
+		for _, kind := range []string{"reader", "writer"} {
+			if err := c.bindTenantEntity(kind, env, tenantID); err != nil {
+				return err
+			}
+		}
 	}
 
 	if c.Cfg.EnableCredentials {
-		if err := c.writeDBRole(tenantID, "readonly", "app_readonly"); err != nil {
+		if err := c.writeDBRole(role, "readonly", "app_readonly"); err != nil {
 			return err
 		}
-		if err := c.writeDBRole(tenantID, "readwrite", "app_readwrite"); err != nil {
+		if err := c.writeDBRole(role, "readwrite", "app_readwrite"); err != nil {
 			return err
 		}
 	}
 
-	log.Printf("tenant %s onboarded", tenantID)
+	log.Printf("tenant %s onboarded", role)
 	return nil
 }
 
-func (c *Client) writeAppRole(kind, tenantID string, policies []string) error {
-	_, err := c.API.Logical().Write("auth/"+c.Cfg.TenantMount(kind)+"/role/"+tenantID, map[string]any{
+func (c *Client) writeAppRole(kind, role string, policies []string) error {
+	_, err := c.API.Logical().Write("auth/"+c.Cfg.TenantMount(kind)+"/role/"+role, map[string]any{
 		"token_policies":     policies,
 		"token_ttl":          c.Cfg.TokenTTL,
 		"token_max_ttl":      c.Cfg.TokenMaxTTL,
@@ -58,6 +72,97 @@ func (c *Client) writeAppRole(kind, tenantID string, policies []string) error {
 		"bind_secret_id":     true,
 	})
 	return err
+}
+
+// tenantEntityName is the identity entity for one tenant role on one mount.
+func (c *Client) tenantEntityName(kind, env, tenantID string) string {
+	return c.Cfg.TenantMount(kind) + "/" + c.Cfg.TenantRole(env, tenantID)
+}
+
+// bindTenantEntity gives the tenant role on one mount an entity with env and tenant metadata, aliased by the
+// role's role_id so every login on that role lands on it. Re-runs are no-ops; an entity Vault auto-created for
+// an earlier login is unlinked so the metadata-bearing one wins.
+func (c *Client) bindTenantEntity(kind, env, tenantID string) error {
+	mount := c.Cfg.TenantMount(kind)
+	role := c.Cfg.TenantRole(env, tenantID)
+	rid, err := c.API.Logical().Read("auth/" + mount + "/role/" + role + "/role-id")
+	if err != nil {
+		return err
+	}
+	if rid == nil || rid.Data["role_id"] == nil {
+		return fmt.Errorf("role %s/%s has no role_id", mount, role)
+	}
+	accessor, err := c.authAccessor(mount)
+	if err != nil {
+		return err
+	}
+	return c.ensureEntityAlias(c.tenantEntityName(kind, env, tenantID),
+		map[string]any{entityMetaEnv: env, entityMetaTenant: tenantID},
+		fmt.Sprint(rid.Data["role_id"]), accessor)
+}
+
+func (c *Client) authAccessor(mount string) (string, error) {
+	auths, err := c.API.Sys().ListAuth()
+	if err != nil {
+		return "", err
+	}
+	a := auths[mount+"/"]
+	if a == nil || a.Accessor == "" {
+		return "", fmt.Errorf("auth mount %s has no accessor", mount)
+	}
+	return a.Accessor, nil
+}
+
+// ensureEntityAlias upserts the entity by name with metadata and points the (aliasName, accessor) alias at it.
+func (c *Client) ensureEntityAlias(name string, metadata map[string]any, aliasName, accessor string) error {
+	if _, err := c.API.Logical().Write("identity/entity/name/"+name, map[string]any{"metadata": metadata}); err != nil {
+		return fmt.Errorf("write entity %s: %w", name, err)
+	}
+	ent, err := c.API.Logical().Read("identity/entity/name/" + name)
+	if err != nil {
+		return err
+	}
+	if ent == nil || ent.Data["id"] == nil {
+		return fmt.Errorf("entity %s was not created", name)
+	}
+	entityID := fmt.Sprint(ent.Data["id"])
+
+	existing, err := c.API.Logical().Write("identity/lookup/entity", map[string]any{
+		"alias_name": aliasName, "alias_mount_accessor": accessor,
+	})
+	if err != nil {
+		return fmt.Errorf("lookup alias: %w", err)
+	}
+	if existing != nil && existing.Data != nil {
+		if fmt.Sprint(existing.Data["id"]) == entityID {
+			return nil
+		}
+		for _, a := range aliasList(existing.Data["aliases"]) {
+			if a["name"] == aliasName && a["mount_accessor"] == accessor {
+				if err := c.deleteMissingOK("identity/entity-alias/id/" + fmt.Sprint(a["id"])); err != nil {
+					return fmt.Errorf("unlink stale alias: %w", err)
+				}
+			}
+		}
+	}
+	_, err = c.API.Logical().Write("identity/entity-alias", map[string]any{
+		"name": aliasName, "canonical_id": entityID, "mount_accessor": accessor,
+	})
+	if err != nil {
+		return fmt.Errorf("write alias for %s: %w", name, err)
+	}
+	return nil
+}
+
+func aliasList(v any) []map[string]any {
+	raw, _ := v.([]any)
+	out := make([]map[string]any, 0, len(raw))
+	for _, r := range raw {
+		if m, ok := r.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // dbCreationStatements are the only statements a tenant database role may run. The provisioning
@@ -70,8 +175,8 @@ func dbCreationStatements() []string {
 	}
 }
 
-func (c *Client) writeDBRole(tenantID, suffix, group string) error {
-	role := fmt.Sprintf("tenant-%s-%s", tenantID, suffix)
+func (c *Client) writeDBRole(tenantRole, suffix, group string) error {
+	role := fmt.Sprintf("tenant-%s-%s", tenantRole, suffix)
 	stmts := dbCreationStatements()
 	grant := fmt.Sprintf(`GRANT %s TO "{{name}}";`, group)
 	found := false
@@ -117,18 +222,27 @@ func (c *Client) LoginAppRole(mount, role string) (string, error) {
 	return login.Auth.ClientToken, nil
 }
 
-func (c *Client) OffboardTenant(tenantID string, purge bool) error {
+func (c *Client) OffboardTenant(env, tenantID string, purge bool) error {
 	if err := ValidateTenantID(tenantID); err != nil {
 		return err
 	}
+	if err := c.Cfg.checkEnv(env); err != nil {
+		return err
+	}
+	role := c.Cfg.TenantRole(env, tenantID)
 	for _, kind := range []string{"reader", "writer"} {
-		if err := c.deleteMissingOK("auth/" + c.Cfg.TenantMount(kind) + "/role/" + tenantID); err != nil {
-			return fmt.Errorf("delete %s role %s: %w", kind, tenantID, err)
+		if c.Cfg.SharedEnvs {
+			if err := c.deleteMissingOK("identity/entity/name/" + c.tenantEntityName(kind, env, tenantID)); err != nil {
+				return fmt.Errorf("delete %s entity %s: %w", kind, role, err)
+			}
+		}
+		if err := c.deleteMissingOK("auth/" + c.Cfg.TenantMount(kind) + "/role/" + role); err != nil {
+			return fmt.Errorf("delete %s role %s: %w", kind, role, err)
 		}
 	}
 	if c.Cfg.EnableCredentials {
 		for _, suffix := range []string{"readonly", "readwrite"} {
-			dbRole := fmt.Sprintf("tenant-%s-%s", tenantID, suffix)
+			dbRole := fmt.Sprintf("tenant-%s-%s", role, suffix)
 			_ = c.API.Sys().RevokePrefix(c.Cfg.DatabaseMount + "/creds/" + dbRole)
 			if err := c.deleteMissingOK(c.Cfg.DatabaseMount + "/roles/" + dbRole); err != nil {
 				return fmt.Errorf("delete database role %s: %w", dbRole, err)
@@ -136,16 +250,16 @@ func (c *Client) OffboardTenant(tenantID string, purge bool) error {
 		}
 	}
 	if purge {
-		if err := c.purgeTenantSecrets(tenantID); err != nil {
+		if err := c.purgeKVPrefix(c.Cfg.KVMetaPath(env, tenantID, "")); err != nil {
 			return err
 		}
 	}
-	log.Printf("tenant %s offboarded", tenantID)
+	log.Printf("tenant %s offboarded", role)
 	return nil
 }
 
-func (c *Client) purgeTenantSecrets(tenantID string) error {
-	meta := c.Cfg.KVMetaPath(tenantID, "")
+// purgeKVPrefix destroys every secret under one KV v2 metadata path, recursing into folders.
+func (c *Client) purgeKVPrefix(meta string) error {
 	r, err := c.Do("GET", meta+"?list=true", nil)
 	if err != nil && r.Status == 0 {
 		return err
@@ -168,7 +282,13 @@ func (c *Client) purgeTenantSecrets(tenantID string) error {
 		return err
 	}
 	for _, key := range wrap.Data.Keys {
-		path := strings.TrimSuffix(meta+"/"+strings.TrimSuffix(key, "/"), "/")
+		if strings.HasSuffix(key, "/") {
+			if err := c.purgeKVPrefix(meta + "/" + strings.TrimSuffix(key, "/")); err != nil {
+				return err
+			}
+			continue
+		}
+		path := meta + "/" + key
 		if err := c.deleteMissingOK(path); err != nil {
 			return fmt.Errorf("destroy %s: %w", path, err)
 		}

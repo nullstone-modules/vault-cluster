@@ -12,8 +12,21 @@ import (
 type Settings struct {
 	Addr          string
 	TLSServerName string
+	// SharedEnvs is the cluster's shared output: tenants are scoped per env and vault-utils needs --env.
+	SharedEnvs bool
 	// Note explains a fallback, for stderr.
 	Note string
+}
+
+// sharedOutput reads the cluster's shared output, which older clusters lack (false).
+func sharedOutput(out map[string]any) bool {
+	switch v := out["shared"].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(strings.TrimSpace(v), "true")
+	}
+	return false
 }
 
 // SettingsFromOutputs prefers the user-facing address. internal selects the private name (vault_addr), which
@@ -44,10 +57,11 @@ func SettingsFromOutputs(ws Workspace, internal bool) (Settings, error) {
 	if internalAddr == "" && userAddr == "" {
 		return Settings{}, fmt.Errorf("workspace has no vault_addr, user_vault_addr, or vault_fqdn output; has it been applied?")
 	}
+	shared := sharedOutput(out)
 	if !internal && userAddr != "" {
-		return Settings{Addr: userAddr}, nil
+		return Settings{Addr: userAddr, SharedEnvs: shared}, nil
 	}
-	s := Settings{Addr: internalAddr}
+	s := Settings{Addr: internalAddr, SharedEnvs: shared}
 	if !internal {
 		s.Note = "no subdomain is connected to this cluster; using " + vaultFQDN + ", which resolves only inside the cluster network"
 	}
@@ -92,6 +106,11 @@ func Render(shell string, s Settings) (string, error) {
 		set("VAULT_TLS_SERVER_NAME", s.TLSServerName)
 	} else {
 		unset("VAULT_TLS_SERVER_NAME")
+	}
+	if s.SharedEnvs {
+		set("SHARED_ENVS", "true")
+	} else {
+		unset("SHARED_ENVS")
 	}
 	return b.String(), nil
 }

@@ -13,7 +13,7 @@ var reservedTenantIDs = map[string]struct{}{
 	"sys": {}, "auth": {}, "identity": {}, "cubbyhole": {}, "root": {},
 	"default": {}, "admin": {}, "data": {}, "metadata": {}, "delete": {},
 	"undelete": {}, "destroy": {}, "config": {}, "subkeys": {}, "tenant": {},
-	"customers": {},
+	"customers": {}, "envs": {},
 }
 
 func ValidateTenantID(id string) error {
@@ -53,6 +53,23 @@ func ValidateTenantID(id string) error {
 	}
 	if _, ok := reservedTenantIDs[id]; ok {
 		return fmt.Errorf("tenant ID %q is reserved", id)
+	}
+	return nil
+}
+
+// ValidateEnvName accepts a Nullstone env name as a path segment: the tenant ID character class, so a
+// name never contains "." (the role separator), "/", or a glob.
+func ValidateEnvName(env string) error {
+	if env == "" {
+		return fmt.Errorf("env name is empty")
+	}
+	if err := ValidateTenantID(env); err != nil {
+		if _, reserved := reservedTenantIDs[env]; !reserved {
+			return fmt.Errorf("env name %q: %w", env, err)
+		}
+		if !tenantIDPattern.MatchString(env) {
+			return fmt.Errorf("env name %q does not match %s", env, tenantIDPattern)
+		}
 	}
 	return nil
 }

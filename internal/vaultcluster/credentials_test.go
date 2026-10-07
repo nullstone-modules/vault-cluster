@@ -14,10 +14,10 @@ func TestCredentialsMatrix(t *testing.T) {
 	if err := c.Configure(); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateTenant("tenant-a"); err != nil {
+	if err := c.CreateTenant("", "tenant-a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateTenant("tenant-b"); err != nil {
+	if err := c.CreateTenant("", "tenant-b"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -93,7 +93,7 @@ func TestCredentialsAfterIsolation(t *testing.T) {
 	if err := c.Configure(); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateTenant("tenant-a"); err != nil {
+	if err := c.CreateTenant("", "tenant-a"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -116,7 +116,7 @@ func TestCredentialsAfterIsolation(t *testing.T) {
 	if err := prov.enableCredentialsIfNeeded(store); err != nil {
 		t.Fatal(err)
 	}
-	if err := prov.CreateTenant("tenant-a"); err != nil {
+	if err := prov.CreateTenant("", "tenant-a"); err != nil {
 		t.Fatal(err)
 	}
 	if r, _ := prov.Do("POST", c.Cfg.DatabaseMount+"/roles/tenant-tenant-a-readwrite", map[string]any{

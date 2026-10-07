@@ -9,7 +9,7 @@ import (
 )
 
 func TestLintFixtures(t *testing.T) {
-	cfg := Config{KVMount: "kv", TenantPrefix: "customers", DatabaseMount: "database", AuthMount: "approle"}
+	cfg := Config{KVMount: "kv", TenantPrefix: "customers", EnvPrefix: "envs", DatabaseMount: "database", AuthMount: "approle"}
 	root := filepath.Join("testdata", "lint")
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -36,7 +36,7 @@ func TestLintFixtures(t *testing.T) {
 }
 
 func TestRenderAndLintPlatformPolicies(t *testing.T) {
-	cfg := Config{KVMount: "kv", TenantPrefix: "customers", DatabaseMount: "database", AuthMount: "approle"}
+	cfg := Config{KVMount: "kv", TenantPrefix: "customers", EnvPrefix: "envs", DatabaseMount: "database", AuthMount: "approle"}
 	acc := TenantAccessors{Reader: "auth_approle_1a2b3c4d", Writer: "auth_approle_5e6f7a8b"}
 	for _, name := range []string{"provisioning", "operator", "apps-auth", "apps-reader", "apps-writer"} {
 		hcl, err := RenderPolicy(name, cfg, acc)

@@ -23,7 +23,7 @@ func TestAppsBrokerTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"tenant-a", "tenant-b"} {
-		if err := c.CreateTenant(id); err != nil {
+		if err := c.CreateTenant("", id); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -61,7 +61,7 @@ func TestAppsBrokerTokens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("writer broker login as tenant-a: %v", err)
 	}
-	if _, err := c.WithToken(tokAW).API.Logical().Write(c.Cfg.KVDataPath("tenant-a", "fixture"), map[string]any{"data": map[string]any{"v": "FAKE-a"}}); err != nil {
+	if _, err := c.WithToken(tokAW).API.Logical().Write(c.Cfg.KVDataPath("", "tenant-a", "fixture"), map[string]any{"data": map[string]any{"v": "FAKE-a"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -76,11 +76,11 @@ func TestAppsBrokerTokens(t *testing.T) {
 		if id == "tenant-b" {
 			other = "tenant-a"
 		}
-		if got := status(cl, "GET", c.Cfg.KVDataPath(id, "fixture"), nil); got != 200 && got != 404 {
+		if got := status(cl, "GET", c.Cfg.KVDataPath("", id, "fixture"), nil); got != 200 && got != 404 {
 			t.Fatalf("%s reading its own secret: HTTP %d", id, got)
 		}
-		deny(cl, "GET", c.Cfg.KVDataPath(other, "fixture"), nil)
-		deny(cl, "POST", c.Cfg.KVDataPath(id, "fixture"), map[string]any{"data": map[string]any{"v": "FAKE-write"}})
+		deny(cl, "GET", c.Cfg.KVDataPath("", other, "fixture"), nil)
+		deny(cl, "POST", c.Cfg.KVDataPath("", id, "fixture"), map[string]any{"data": map[string]any{"v": "FAKE-write"}})
 		deny(cl, "GET", "auth/"+readerMount+"/role/"+other+"/role-id", nil)
 
 		self, err := cl.API.Auth().Token().LookupSelf()
@@ -102,7 +102,7 @@ func TestAppsBrokerTokens(t *testing.T) {
 	}
 
 	// The broker token itself holds no tenant access and cannot pick a level it was not given.
-	deny(reader, "GET", c.Cfg.KVDataPath("tenant-a", "fixture"), nil)
+	deny(reader, "GET", c.Cfg.KVDataPath("", "tenant-a", "fixture"), nil)
 	deny(reader, "GET", "auth/"+readerMount+"/role?list=true", nil)
 	deny(reader, "GET", "auth/"+readerMount+"/role/tenant-a", nil)
 	deny(reader, "POST", "auth/"+readerMount+"/role/tenant-c", map[string]any{"token_policies": []string{"tenant-reader"}})
@@ -111,7 +111,7 @@ func TestAppsBrokerTokens(t *testing.T) {
 	deny(reader, "POST", "auth/token/create", map[string]any{"policies": []string{"tenant-writer"}})
 	deny(reader, "GET", "sys/policies/acl/tenant-reader", nil)
 	deny(writer, "GET", "auth/"+readerMount+"/role/tenant-a/role-id", nil)
-	deny(writer, "GET", c.Cfg.KVDataPath("tenant-a", "fixture"), nil)
+	deny(writer, "GET", c.Cfg.KVDataPath("", "tenant-a", "fixture"), nil)
 	deny(writer, "GET", c.Cfg.DatabaseMount+"/creds/tenant-tenant-a-readonly", nil)
 
 	// Unknown tenants have no role, so there is nothing to log in as.
@@ -153,7 +153,7 @@ func TestListTenants(t *testing.T) {
 		t.Fatalf("empty cluster: %v %v", got, err)
 	}
 	for _, id := range []string{"tenant-b", "tenant-a"} {
-		if err := c.CreateTenant(id); err != nil {
+		if err := c.CreateTenant("", id); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -174,7 +174,7 @@ func TestListTenants(t *testing.T) {
 		t.Fatalf("got %+v want %+v", got, want)
 	}
 	var out strings.Builder
-	PrintTenants(&out, got)
+	PrintTenants(&out, got, false)
 	if !strings.Contains(out.String(), "tenant-b\t(no writer role") || !strings.HasPrefix(out.String(), "tenant-a\n") {
 		t.Fatalf("output:\n%s", out.String())
 	}

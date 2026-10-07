@@ -109,6 +109,17 @@ func LintPolicy(policyName, src string, cfg Config) []Finding {
 			}
 		}
 
+		// Shared cluster: a grant under <kv>/<family>/<envs>/ must name one env and one tenant.
+		if envPrefix := cfg.EnvPrefix; envPrefix != "" && p.caps != "deny" && strings.HasPrefix(p.path, cfg.KVMount+"/") {
+			segs := strings.Split(p.path, "/")
+			if len(segs) >= 4 && segs[2] == envPrefix {
+				scoped := len(segs) >= 6 && isLiteralSegment(segs[3]) && segs[4] == cfg.TenantPrefix && isLiteralSegment(segs[5])
+				if !scoped {
+					add(fmt.Sprintf("path %q grants [%s] across envs or tenants", p.path, p.caps))
+				}
+			}
+		}
+
 		switch p.path {
 		case cfg.KVMount + "/*", cfg.KVMount + "/data/*", cfg.KVMount + "/metadata/*":
 			if p.caps != "deny" {
@@ -137,4 +148,9 @@ func LintOrError(policyName, src string, cfg Config) error {
 		fmt.Fprintf(&b, "\n  %s", f)
 	}
 	return fmt.Errorf("%s", b.String())
+}
+
+// isLiteralSegment is one env or tenant segment: non-empty and not a glob. ACL templates count as literal.
+func isLiteralSegment(s string) bool {
+	return s != "" && s != "*" && s != "+"
 }

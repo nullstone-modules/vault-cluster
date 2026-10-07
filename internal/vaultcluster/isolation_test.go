@@ -17,10 +17,10 @@ func TestIsolationMatrix(t *testing.T) {
 	if err := c.Configure(); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateTenant("tenant-a"); err != nil {
+	if err := c.CreateTenant("", "tenant-a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateTenant("tenant-b"); err != nil {
+	if err := c.CreateTenant("", "tenant-b"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -59,8 +59,8 @@ func TestIsolationMatrix(t *testing.T) {
 			t.Fatalf("write %s: %v", path, err)
 		}
 	}
-	mustWrite(tokAW, c.Cfg.KVDataPath("tenant-a", "fixture"), "secret-a")
-	mustWrite(tokBW, c.Cfg.KVDataPath("tenant-b", "fixture"), "secret-b")
+	mustWrite(tokAW, c.Cfg.KVDataPath("", "tenant-a", "fixture"), "secret-a")
+	mustWrite(tokBW, c.Cfg.KVDataPath("", "tenant-b", "fixture"), "secret-b")
 
 	assertStatus := func(token, method, path string, body any, want int) {
 		t.Helper()
@@ -78,10 +78,10 @@ func TestIsolationMatrix(t *testing.T) {
 		assertStatus(token, method, path, body, 403)
 	}
 
-	aData := c.Cfg.KVDataPath("tenant-a", "fixture")
-	bData := c.Cfg.KVDataPath("tenant-b", "fixture")
-	aMeta := c.Cfg.KVMetaPath("tenant-a", "fixture")
-	bMeta := c.Cfg.KVMetaPath("tenant-b", "fixture")
+	aData := c.Cfg.KVDataPath("", "tenant-a", "fixture")
+	bData := c.Cfg.KVDataPath("", "tenant-b", "fixture")
+	aMeta := c.Cfg.KVMetaPath("", "tenant-a", "fixture")
+	bMeta := c.Cfg.KVMetaPath("", "tenant-b", "fixture")
 	crossWrite := map[string]any{"data": map[string]any{"value": "FAKE-cross-tenant-write"}}
 
 	assertStatus(tokA, "GET", aData, nil, 200)
@@ -94,7 +94,7 @@ func TestIsolationMatrix(t *testing.T) {
 	deny(tokBW, "GET", aData, nil)
 	deny(tokAW, "POST", bData, crossWrite)
 	deny(tokBW, "POST", aData, crossWrite)
-	deny(tokAW, "POST", c.Cfg.KVDataPath("tenant-b", "newly-planted-secret"), map[string]any{
+	deny(tokAW, "POST", c.Cfg.KVDataPath("", "tenant-b", "newly-planted-secret"), map[string]any{
 		"data": map[string]any{"value": "FAKE-planted"},
 	})
 	deny(tokAW, "DELETE", bData, nil)
@@ -104,7 +104,7 @@ func TestIsolationMatrix(t *testing.T) {
 	deny(tokB, "GET", aMeta, nil)
 	deny(tokA, "GET", c.Cfg.KVMount+"/metadata/"+c.Cfg.TenantPrefix+"?list=true", nil)
 	deny(tokB, "GET", c.Cfg.KVMount+"/metadata/"+c.Cfg.TenantPrefix+"?list=true", nil)
-	deny(tokA, "GET", c.Cfg.KVMetaPath("tenant-b", "")+"?list=true", nil)
+	deny(tokA, "GET", c.Cfg.KVMetaPath("", "tenant-b", "")+"?list=true", nil)
 
 	deny(tokA, "GET", c.Cfg.KVMount+"/data/"+c.Cfg.TenantPrefix, nil)
 	deny(tokA, "GET", c.Cfg.KVMount+"/data", nil)
@@ -116,8 +116,8 @@ func TestIsolationMatrix(t *testing.T) {
 	deny(tokAW, "POST", c.Cfg.KVMount+"/data/platform/root-credentials", map[string]any{
 		"data": map[string]any{"value": "FAKE-planted-sibling"},
 	})
-	deny(tokA, "GET", c.Cfg.KVDataPath("tenant-a-extended", "secret"), nil)
-	deny(tokA, "GET", c.Cfg.KVDataPath("tenant-ax", "secret"), nil)
+	deny(tokA, "GET", c.Cfg.KVDataPath("", "tenant-a-extended", "secret"), nil)
+	deny(tokA, "GET", c.Cfg.KVDataPath("", "tenant-ax", "secret"), nil)
 	deny(tokA, "GET", c.Cfg.KVMount+"/data/"+c.Cfg.TenantPrefix+"/*", nil)
 
 	deny(tokA, "GET", "sys/mounts", nil)
@@ -183,7 +183,7 @@ func TestIsolationMatrix(t *testing.T) {
 		}
 	}
 
-	if err := c.OffboardTenant("tenant-a", false); err != nil {
+	if err := c.OffboardTenant("", "tenant-a", false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.LoginAppRole(c.Cfg.TenantMount("reader"), "tenant-a"); err == nil {
