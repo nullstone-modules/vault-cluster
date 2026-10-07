@@ -102,3 +102,8 @@ output "public_urls" {
   value       = local.public_urls
   description = "list(string) ||| A list of URLs accessible to the public"
 }
+
+output "shared" {
+  value       = local.shared
+  description = "bool ||| True when this cluster runs in the shared previews env (Nullstone env type PreviewsSharedEnv) and scopes every tenant's secrets under envs/<env>/."
+}

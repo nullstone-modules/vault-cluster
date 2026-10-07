@@ -161,6 +161,9 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants list` | no | List tenants; flags one missing a reader or writer role |
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants destroy <id> --yes` | yes (access) | Revoke access; secrets kept |
 | `docker compose run --rm -e VAULT_TOKEN=... bootstrap tenants destroy <id> --yes --purge-secrets` | yes | Also destroy secret versions |
+| `vault-utils tenants create <id> --env <env>` | no | Onboard a tenant for one env (shared cluster; see [Shared cluster](#shared-cluster)) |
+| `vault-utils envs list` | no | Envs with tenants (shared cluster) |
+| `vault-utils envs destroy <env> --yes [--purge-secrets]` | yes | Offboard every tenant of an env; purge also destroys its secrets |
 | `docker compose run --rm bootstrap snapshot take` | no | Raft snapshot plus SHA-256 |
 | `docker compose run --rm bootstrap snapshot restore <file> --yes` | yes | Replaces all Vault state |
 | `go test -short ./...` | no | Unit tests (tenant ID, policy lint, render, compose lint) — repo root |
@@ -187,7 +190,34 @@ kv/metadata/customers/{tenant_id}/*
 | Tenant policies | `tenant-reader`, `tenant-writer`, `tenant-database` | Static, written at bootstrap. The tenant comes from the login role name (`{{identity.entity.aliases.<accessor>.metadata.role_name}}`), so nothing is written per tenant. |
 | Broker policies | `apps-reader`, `apps-writer` | Read `role-id` and mint `secret-id` for any onboarded tenant on one mount. No KV, database, or sys access. |
 
-Tenant IDs: `^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$` (3-32 characters). Rejected: `/`, `..`, `*`, `sys`, `data`, `root`, and similar reserved names.
+Tenant IDs: `^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$` (3-32 characters). Rejected: `/`, `..`, `*`, `sys`, `data`, `root`, `envs`, and similar reserved names.
+
+### Shared cluster
+
+A cluster launched in the stack's shared previews env (Nullstone env type `PreviewsSharedEnv`) serves every preview env. Its output `shared` is true, its nodes run with `SHARED_ENVS=true`, and every tenant belongs to one env:
+
+```
+kv/data/envs/{env}/customers/{tenant_id}/*
+kv/metadata/envs/{env}/customers/{tenant_id}/*
+```
+
+| Piece | Shared cluster |
+|---|---|
+| Tenant role name | `{env}.{tenant_id}` on the same two mounts. Env names use the tenant ID character class, so the `.` is unambiguous. |
+| Tenant policies | Env and tenant come from entity metadata (`{{identity.entity.metadata.env}}`, `...tenant`). `tenants create --env` writes the roles, one entity per role with that metadata, and an alias on the role's `role_id`. Nothing per env. |
+| Broker policies | `auth/approle-<kind>/role/{{identity.entity.metadata.env}}.*` with every parameter denied: an app mints logins only for its own env and cannot change a role. The env comes from the entity the cluster function writes on the app's auth role (see [App access](#app-access)). |
+| Provisioning, apps-auth | May create entities and aliases; `policies` and `disabled` are refused, groups and OIDC are denied. |
+
+A cluster anywhere else is unshared and renders the 0.1.x policies unchanged. Converting a cluster between the two is not supported: launch a new one.
+
+```bash
+vault-utils tenants create acme-corp --env pr-123
+vault-utils tenants list
+vault-utils envs list
+vault-utils envs destroy pr-123 --yes --purge-secrets
+```
+
+`--env` is required on a shared cluster and refused on an unshared one; `vault-utils env` exports `SHARED_ENVS` so the CLI knows which it is talking to. `envs destroy` offboards every tenant of the env; `--purge-secrets` also destroys `kv/metadata/envs/<env>` and needs break-glass.
 
 ```bash
 export VAULT_ADDR=http://127.0.0.1:8200
@@ -429,19 +459,39 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 
 Connect `vault` to the cluster. The app module must expose `security_group_id` and its IAM role name.
 
-`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. `access` is `reader` (default) or `writer`; the capability binds the matching broker policy (`apps-reader` or `apps-writer`) and nothing else. The app receives `VAULT_ADDR`, `VAULT_ROLE`, `VAULT_TLS_SERVER_NAME` (empty unless the NLB terminates TLS), and `VAULT_TENANT_MOUNT`. During apply the capability calls the cluster function with `method = "aws"` and the app IAM role ARN; the function binds only that principal to that role. The same function serves GCP service accounts (`method = "gcp"`) for a future GCP cluster module.
+`role_name` is optional. If empty, the Vault role is `<app-name>-<resource-suffix>`. `access` is `reader` (default) or `writer`; the capability binds the matching broker policy (`apps-reader` or `apps-writer`) and nothing else. The app receives `VAULT_ADDR`, `VAULT_ROLE`, `VAULT_TLS_SERVER_NAME` (empty unless the NLB terminates TLS), `VAULT_TENANT_MOUNT`, and `VAULT_ENV`. During apply the capability calls the cluster function with `method = "aws"` and the app IAM role ARN; the function binds only that principal to that role. The same function serves GCP service accounts (`method = "gcp"`) for a future GCP cluster module.
 
-The app does not receive a Vault token. At startup it logs in with its IAM role, then for every request it logs in again as one tenant:
+On a shared cluster (output `shared`), the capability also sends the app's Nullstone env name. The function then gives the auth role an identity entity with that env, which the broker policies template, and `VAULT_ENV` carries it to the app. On an unshared cluster `VAULT_ENV` is empty and the function never touches identity. Leave `role_name` empty on a shared cluster: a fixed name collides across preview envs and the function refuses the second binding.
+
+The app does not receive a Vault token. At startup it logs in with its IAM role, then for every request it logs in again as one tenant. The role is `$TENANT`, or `$VAULT_ENV.$TENANT` when `VAULT_ENV` is set; the KV path is `customers/$TENANT/...`, or `envs/$VAULT_ENV/customers/$TENANT/...`:
 
 ```bash
 vault login -method=aws role="$VAULT_ROLE"
 
-ROLE_ID=$(vault read -field=role_id auth/$VAULT_TENANT_MOUNT/role/$TENANT/role-id)
-SECRET_ID=$(vault write -f -field=secret_id auth/$VAULT_TENANT_MOUNT/role/$TENANT/secret-id)
+ROLE="${VAULT_ENV:+$VAULT_ENV.}$TENANT"
+ROLE_ID=$(vault read -field=role_id auth/$VAULT_TENANT_MOUNT/role/$ROLE/role-id)
+SECRET_ID=$(vault write -f -field=secret_id auth/$VAULT_TENANT_MOUNT/role/$ROLE/secret-id)
 TENANT_TOKEN=$(vault write -field=token auth/$VAULT_TENANT_MOUNT/login role_id=$ROLE_ID secret_id=$SECRET_ID)
 ```
 
 The broker token reads no secrets. The tenant token is good for that tenant only, for 15 minutes. A login as any other role is denied. The operator token is not injected.
+
+### Shared cluster in Nullstone
+
+Launch the cluster block in the stack's shared previews env (named `previews-shared` below). In `.nullstone/previews.yml`, point each app's capability at it; everywhere else the app uses its own env's cluster:
+
+```yaml
+version: "0.1"
+
+apps:
+  api:
+    capabilities:
+      vault:
+        connections:
+          vault: previews-shared.vault
+```
+
+Create the preview env's tenants with `vault-utils tenants create <id> --env <env>` and remove them with `vault-utils envs destroy <env> --yes --purge-secrets` when the env goes away.
 
 ## Security
 

@@ -1,4 +1,14 @@
-mock_provider "ns" {}
+mock_provider "ns" {
+  mock_data "ns_workspace" {
+    defaults = {
+      stack_name = "core"
+      env_name   = "pr-12"
+      block_ref  = "api"
+      block_name = "api"
+      aws_tags   = {}
+    }
+  }
+}
 mock_provider "aws" {}
 
 variables {
@@ -33,8 +43,8 @@ run "injects_the_capability_role" {
   }
 
   assert {
-    condition     = output.env == [{ name = "VAULT_ADDR", value = "http://vault.internal:8200" }, { name = "VAULT_ROLE", value = "billing" }, { name = "VAULT_TLS_SERVER_NAME", value = "" }, { name = "VAULT_TENANT_MOUNT", value = "approle-reader" }]
-    error_message = "The app must receive VAULT_ADDR, the capability role, an empty TLS name without TLS, and its tenant mount."
+    condition     = output.env == [{ name = "VAULT_ADDR", value = "http://vault.internal:8200" }, { name = "VAULT_ROLE", value = "billing" }, { name = "VAULT_TLS_SERVER_NAME", value = "" }, { name = "VAULT_TENANT_MOUNT", value = "approle-reader" }, { name = "VAULT_ENV", value = "" }]
+    error_message = "The app must receive VAULT_ADDR, the capability role, an empty TLS name without TLS, its tenant mount, and an empty VAULT_ENV on a cluster without a shared output."
   }
 
   assert {
@@ -48,8 +58,59 @@ run "injects_the_capability_role" {
   }
 
   assert {
+    condition     = jsondecode(aws_lambda_invocation.vault_role.input).data.env == ""
+    error_message = "Without a shared output the function gets no env."
+  }
+
+  assert {
     condition     = aws_security_group_rule.app_to_vault.from_port == 8200 && aws_security_group_rule.vault_from_app.source_security_group_id == "sg-app"
     error_message = "Security group rules must use the cluster API port and the app security group."
+  }
+}
+
+run "shared_cluster_binds_the_env" {
+  command = plan
+
+  override_data {
+    target = data.ns_connection.vault
+    values = {
+      outputs = {
+        vault_fqdn            = "vault.internal"
+        vault_addr            = "http://vault.internal:8200"
+        nlb_security_group_id = "sg-nlb"
+        vault_api_port        = "8200"
+        admin_function_name   = "vault-apps-auth"
+        shared                = "true"
+      }
+    }
+  }
+
+  assert {
+    condition     = jsondecode(aws_lambda_invocation.vault_role.input).data.env == "pr-12" && output.env[4] == { name = "VAULT_ENV", value = "pr-12" }
+    error_message = "On a shared cluster the function binds the app to its env and the app receives VAULT_ENV."
+  }
+}
+
+run "unshared_cluster_passes_no_env" {
+  command = plan
+
+  override_data {
+    target = data.ns_connection.vault
+    values = {
+      outputs = {
+        vault_fqdn            = "vault.internal"
+        vault_addr            = "http://vault.internal:8200"
+        nlb_security_group_id = "sg-nlb"
+        vault_api_port        = "8200"
+        admin_function_name   = "vault-apps-auth"
+        shared                = "false"
+      }
+    }
+  }
+
+  assert {
+    condition     = jsondecode(aws_lambda_invocation.vault_role.input).data.env == "" && output.env[4] == { name = "VAULT_ENV", value = "" }
+    error_message = "An unshared cluster must behave as before: no env for the function, empty VAULT_ENV."
   }
 }
 
@@ -174,6 +235,7 @@ run "uses_the_cluster_addr_and_tls_name" {
       { name = "VAULT_ROLE", value = "billing" },
       { name = "VAULT_TLS_SERVER_NAME", value = "vault.acme.example.com" },
       { name = "VAULT_TENANT_MOUNT", value = "approle-reader" },
+      { name = "VAULT_ENV", value = "" },
     ]
     error_message = "A TLS cluster must give the app its https address and the certificate name."
   }

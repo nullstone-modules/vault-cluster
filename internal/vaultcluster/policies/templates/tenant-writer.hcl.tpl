@@ -1,42 +1,46 @@
+{{- /* Unshared: customers/<role_name alias>. Shared: envs/<entity env>/customers/<entity tenant>. */ -}}
+{{- $tenant := printf "%s/%s" .TenantPrefix .WriterTenant -}}
+{{- $deny := .TenantPrefix -}}
+{{- if .Shared}}{{$tenant = printf "%s/%s/%s" .EnvPrefix .Env $tenant}}{{$deny = .EnvPrefix}}{{end -}}
 # Full KV lifecycle on the tenant named by the caller's AppRole role ({{.WriterMount}} mount; role name = tenant ID). Static: written once at bootstrap.
 # Name all five KV v2 path families.
-path "{{.KVMount}}/data/{{.TenantPrefix}}/{{.WriterTenant}}/*" {
+path "{{.KVMount}}/data/{{$tenant}}/*" {
   capabilities = ["create", "read", "update", "patch", "delete", "list"]
 }
 
-path "{{.KVMount}}/metadata/{{.TenantPrefix}}/{{.WriterTenant}}/*" {
+path "{{.KVMount}}/metadata/{{$tenant}}/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
-path "{{.KVMount}}/delete/{{.TenantPrefix}}/{{.WriterTenant}}/*" {
+path "{{.KVMount}}/delete/{{$tenant}}/*" {
   capabilities = ["update"]
 }
 
-path "{{.KVMount}}/undelete/{{.TenantPrefix}}/{{.WriterTenant}}/*" {
+path "{{.KVMount}}/undelete/{{$tenant}}/*" {
   capabilities = ["update"]
 }
 
-path "{{.KVMount}}/destroy/{{.TenantPrefix}}/{{.WriterTenant}}/*" {
+path "{{.KVMount}}/destroy/{{$tenant}}/*" {
   capabilities = ["update"]
 }
 
-path "{{.KVMount}}/data/{{.TenantPrefix}}/*" {
+path "{{.KVMount}}/data/{{$deny}}/*" {
   capabilities = ["deny"]
 }
 
-path "{{.KVMount}}/metadata/{{.TenantPrefix}}/*" {
+path "{{.KVMount}}/metadata/{{$deny}}/*" {
   capabilities = ["deny"]
 }
 
-path "{{.KVMount}}/delete/{{.TenantPrefix}}/*" {
+path "{{.KVMount}}/delete/{{$deny}}/*" {
   capabilities = ["deny"]
 }
 
-path "{{.KVMount}}/undelete/{{.TenantPrefix}}/*" {
+path "{{.KVMount}}/undelete/{{$deny}}/*" {
   capabilities = ["deny"]
 }
 
-path "{{.KVMount}}/destroy/{{.TenantPrefix}}/*" {
+path "{{.KVMount}}/destroy/{{$deny}}/*" {
   capabilities = ["deny"]
 }
 

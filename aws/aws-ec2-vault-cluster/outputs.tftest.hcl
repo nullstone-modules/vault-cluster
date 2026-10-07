@@ -11,6 +11,13 @@ mock_provider "ns" {
     }
   }
 
+  mock_data "ns_env" {
+    defaults = {
+      name = "prod"
+      type = "PipelineEnv"
+    }
+  }
+
   mock_data "ns_connection" {
     defaults = {
       outputs = {
@@ -119,5 +126,46 @@ run "uses_https_with_a_subdomain" {
   assert {
     condition     = output.vault_addr == "https://vault.internal:8200" && output.user_vault_addr == "https://vault.acme.example.com:8200" && output.tls_server_name == "vault.acme.example.com" && output.db_hostname == "vault.acme.example.com" && output.db_endpoint == "vault://vault.acme.example.com:8200" && output.private_urls == tolist(["https://vault.internal:8200/ui/"]) && output.public_urls == tolist(["https://vault.acme.example.com:8200/ui/"])
     error_message = "With TLS, vault.internal needs the user-facing name for certificate verification."
+  }
+}
+
+run "is_not_shared_in_a_pipeline_env" {
+  command = plan
+
+  assert {
+    condition     = output.shared == false && strcontains(base64decode(aws_launch_template.this.user_data), "SHARED_ENVS=false")
+    error_message = "A cluster in any env but the shared previews env is unshared and tells its nodes so."
+  }
+}
+
+run "is_not_shared_in_a_preview_env" {
+  command = plan
+
+  override_data {
+    target = data.ns_env.this
+    values = {
+      type = "PreviewEnv"
+    }
+  }
+
+  assert {
+    condition     = output.shared == false
+    error_message = "A preview env's own cluster is unshared."
+  }
+}
+
+run "is_shared_in_the_shared_previews_env" {
+  command = plan
+
+  override_data {
+    target = data.ns_env.this
+    values = {
+      type = "PreviewsSharedEnv"
+    }
+  }
+
+  assert {
+    condition     = output.shared == true && strcontains(base64decode(aws_launch_template.this.user_data), "SHARED_ENVS=true")
+    error_message = "A cluster in the shared previews env is shared and its nodes scope tenants per env."
   }
 }

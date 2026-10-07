@@ -1,9 +1,12 @@
+{{- /* Unshared: tenant-<role_name alias>. Shared: tenant-<entity env>.<entity tenant>. */ -}}
+{{- $role := printf "tenant-%s" .WriterTenant -}}
+{{- if .Shared}}{{$role = printf "tenant-%s.%s" .Env .WriterTenant}}{{end -}}
 # Dynamic DB creds for the tenant named by the caller's {{.WriterMount}} role only. Additive; does not widen KV access.
-path "{{.DatabaseMount}}/creds/tenant-{{.WriterTenant}}-*" {
+path "{{.DatabaseMount}}/creds/{{$role}}-*" {
   capabilities = ["read"]
 }
 
-path "{{.DatabaseMount}}/roles/tenant-{{.WriterTenant}}-*" {
+path "{{.DatabaseMount}}/roles/{{$role}}-*" {
   capabilities = ["read"]
 }
 

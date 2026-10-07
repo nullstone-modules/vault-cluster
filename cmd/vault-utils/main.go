@@ -33,9 +33,11 @@ func usage() {
 
 Commands:
   bootstrap local|aws|azure|gcp     Init once, unseal, configure
-  tenants create <id>
-  tenants list
-  tenants destroy <id> --yes [--purge-secrets]
+  tenants create <id> [--env <env>]
+  tenants list [--env <env>]
+  tenants destroy <id> [--env <env>] --yes [--purge-secrets]
+  envs list                         Envs with tenants (shared cluster only)
+  envs destroy <env> --yes [--purge-secrets]
   snapshot take                     Write a Raft snapshot
   snapshot list
   snapshot verify <file|s3-uri>
@@ -45,7 +47,9 @@ Commands:
   health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
   env --org --stack --env --block   Print shell settings for a Nullstone Vault cluster workspace
 
-Without VAULT_TOKEN, tenants, snapshot take|restore, and health use the token from "vault login".
+Without VAULT_TOKEN, tenants, envs, snapshot take|restore, and health use the token from "vault login".
+On a shared cluster (SHARED_ENVS=true, printed by "vault-utils env") every tenant belongs to an env: --env is
+required there and refused elsewhere.
 
 Local key material: BOOTSTRAP_DIR (default .bootstrap).
 AWS: VAULT_INIT_SECRET_ARN, VAULT_PROVISIONING_SECRET_ARN, VAULT_OPERATOR_SECRET_ARN.
@@ -74,6 +78,8 @@ func run(cmd string, args []string) error {
 		return runBootstrap(c, args)
 	case "tenants":
 		return runTenants(c, args)
+	case "envs":
+		return runEnvs(c, args)
 	case "snapshot":
 		return runSnapshot(c, args)
 	case "health":
@@ -128,51 +134,126 @@ func runBootstrap(c *vaultcluster.Client, args []string) error {
 	}
 }
 
+// tenantArgs parses <id> plus --env <env>, --yes, --purge-secrets. Any other flag is an error.
+type tenantArgs struct {
+	id, env    string
+	yes, purge bool
+}
+
+func parseTenantArgs(args []string) (tenantArgs, error) {
+	var out tenantArgs
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--yes":
+			out.yes = true
+		case a == "--purge-secrets":
+			out.purge = true
+		case a == "--env":
+			if i+1 >= len(args) {
+				return out, fmt.Errorf("--env needs a value")
+			}
+			i++
+			out.env = args[i]
+		case strings.HasPrefix(a, "--env="):
+			out.env = strings.TrimPrefix(a, "--env=")
+		case strings.HasPrefix(a, "-"):
+			return out, fmt.Errorf("unknown flag %q", a)
+		default:
+			out.id = a
+		}
+	}
+	return out, nil
+}
+
+// checkEnvFlag enforces the cluster mode before any Vault call: --env is required on a shared cluster
+// (SHARED_ENVS=true) and refused on an unshared one.
+func checkEnvFlag(shared bool, env string) error {
+	if shared && env == "" {
+		return fmt.Errorf("this cluster is shared across envs; pass --env <env>")
+	}
+	if !shared && env != "" {
+		return fmt.Errorf("this cluster is not shared across envs (SHARED_ENVS is not true); drop --env")
+	}
+	return nil
+}
+
 func runTenants(c *vaultcluster.Client, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: vault-utils tenants create|list|destroy")
 	}
 	sub, rest := args[0], args[1:]
+	ta, err := parseTenantArgs(rest)
+	if err != nil {
+		return err
+	}
 	switch sub {
 	case "create":
-		id := ""
-		for _, a := range rest {
-			if !strings.HasPrefix(a, "-") {
-				id = a
-			}
+		if ta.id == "" {
+			return fmt.Errorf("usage: vault-utils tenants create <id> [--env <env>]")
 		}
-		if id == "" {
-			return fmt.Errorf("usage: vault-utils tenants create <id>")
+		if err := checkEnvFlag(c.Cfg.SharedEnvs, ta.env); err != nil {
+			return err
 		}
-		return c.CreateTenant(id)
+		return c.CreateTenant(ta.env, ta.id)
 	case "list":
 		tenants, err := c.ListTenants()
 		if err != nil {
 			return err
 		}
-		vaultcluster.PrintTenants(os.Stdout, tenants)
-		return nil
-	case "destroy":
-		yes, purge := false, false
-		id := ""
-		for _, a := range rest {
-			switch a {
-			case "--yes":
-				yes = true
-			case "--purge-secrets":
-				purge = true
-			default:
-				if !strings.HasPrefix(a, "-") {
-					id = a
+		if ta.env != "" {
+			var kept []vaultcluster.Tenant
+			for _, t := range tenants {
+				if t.Env == ta.env {
+					kept = append(kept, t)
 				}
 			}
+			tenants = kept
 		}
-		if id == "" || !yes {
-			return fmt.Errorf("usage: vault-utils tenants destroy <id> --yes [--purge-secrets]")
+		vaultcluster.PrintTenants(os.Stdout, tenants, c.Cfg.SharedEnvs)
+		return nil
+	case "destroy":
+		if ta.id == "" || !ta.yes {
+			return fmt.Errorf("usage: vault-utils tenants destroy <id> [--env <env>] --yes [--purge-secrets]")
 		}
-		return c.OffboardTenant(id, purge)
+		if err := checkEnvFlag(c.Cfg.SharedEnvs, ta.env); err != nil {
+			return err
+		}
+		return c.OffboardTenant(ta.env, ta.id, ta.purge)
 	default:
 		return fmt.Errorf("unknown subcommand %q (create, list, destroy)", sub)
+	}
+}
+
+func runEnvs(c *vaultcluster.Client, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: vault-utils envs list | destroy <env> --yes [--purge-secrets]")
+	}
+	sub, rest := args[0], args[1:]
+	ta, err := parseTenantArgs(rest)
+	if err != nil {
+		return err
+	}
+	switch sub {
+	case "list":
+		envs, err := c.ListEnvs()
+		if err != nil {
+			return err
+		}
+		if len(envs) == 0 {
+			fmt.Println("no envs")
+			return nil
+		}
+		for _, e := range envs {
+			fmt.Println(e)
+		}
+		return nil
+	case "destroy":
+		if ta.id == "" || !ta.yes {
+			return fmt.Errorf("usage: vault-utils envs destroy <env> --yes [--purge-secrets]")
+		}
+		return c.DestroyEnv(ta.id, ta.purge)
+	default:
+		return fmt.Errorf("unknown subcommand %q (list, destroy)", sub)
 	}
 }
 
@@ -352,7 +433,7 @@ func usesLoginToken(cmd string, args []string) bool {
 		sub = args[0]
 	}
 	switch cmd {
-	case "tenants":
+	case "tenants", "envs":
 		return true
 	case "snapshot":
 		return sub == "take" || sub == "restore"

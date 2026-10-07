@@ -15,6 +15,10 @@ output "env" {
     {
       name  = "VAULT_TENANT_MOUNT"
       value = local.tenant_mount
+    },
+    {
+      name  = "VAULT_ENV"
+      value = local.env
     }
   ]
 }
