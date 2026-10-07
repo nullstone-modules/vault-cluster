@@ -93,7 +93,12 @@ output "db_endpoint" {
   description = "string ||| Endpoint to reach Vault as vault://<hostname>:<port>."
 }
 
-output "ui_endpoint" {
-  value       = local.ui_endpoint
-  description = "string ||| URL of the Vault web UI."
+output "private_urls" {
+  value       = local.private_urls
+  description = "list(string) ||| A list of URLs only accessible inside the network"
+}
+
+output "public_urls" {
+  value       = local.public_urls
+  description = "list(string) ||| A list of URLs accessible to the public"
 }
