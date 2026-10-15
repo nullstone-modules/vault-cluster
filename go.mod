@@ -11,6 +11,8 @@ require (
 	github.com/aws/smithy-go v1.28.1
 	github.com/hashicorp/vault/api v1.16.0
 	github.com/robfig/cron/v3 v3.0.1
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
 	gopkg.in/nullstone-io/go-api-client.v0 v0.0.0-20260929173059-6bbecdaf8ea3
 )
 

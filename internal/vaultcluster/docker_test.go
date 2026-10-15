@@ -80,6 +80,13 @@ func vaultListenAddr(t *testing.T, id string) string {
 
 func startVaultInmem(t *testing.T, extraRunArgs ...string) *Client {
 	t.Helper()
+	c, _ := startVaultInmemInit(t, extraRunArgs...)
+	return c
+}
+
+// startVaultInmemInit also returns the init response (one Shamir share, the root token).
+func startVaultInmemInit(t *testing.T, extraRunArgs ...string) (*Client, *api.InitResponse) {
+	t.Helper()
 	requireDocker(t)
 	cfgJSON := `{"disable_mlock":true,"listener":{"tcp":{"address":"0.0.0.0:8200","tls_disable":true}},"storage":{"inmem":{}}}`
 	args := append([]string{
@@ -115,5 +122,5 @@ func startVaultInmem(t *testing.T, extraRunArgs ...string) *Client {
 	}
 	c.API.SetToken(resp.RootToken)
 	c.Cfg.Token = resp.RootToken
-	return c
+	return c, resp
 }

@@ -184,3 +184,12 @@ run "is_shared_in_the_shared_previews_env" {
     error_message = "A cluster in the shared previews env is shared and its nodes scope tenants per env."
   }
 }
+
+run "exports_every_platform_secret_arn" {
+  command = plan
+
+  assert {
+    condition     = output.init_secret_arn == aws_secretsmanager_secret.platform["init"].arn && output.apps_auth_secret_arn == aws_secretsmanager_secret.platform["apps-auth"].arn && output.operator_secret_arn == aws_secretsmanager_secret.platform["operator"].arn && output.provisioning_secret_arn == aws_secretsmanager_secret.platform["provisioning"].arn
+    error_message = "break-glass reads every platform secret by ARN, so nothing is discovered by name."
+  }
+}

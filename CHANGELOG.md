@@ -1,3 +1,11 @@
+# 0.5.0
+
+Module: `aws-ec2-vault-cluster` 0.5.0. No new AMI needed: `break-glass` runs from a workstation (a node can run it too with its own env). Outputs only; nothing rolls.
+
+* `vault-utils break-glass --reason <text> --second <name> [cluster flags] <action>` performs the whole root flow in one invocation: operator token and recovery shares from the key store (Secrets Manager by ARN, or `BOOTSTRAP_DIR` locally), `generate-root`, one action, revoke. Actions: `remint provisioning|apps-auth`, `policy write <name> <file>`, `userpass enable [--first-admin <name>]`, `exec -- <command>`. `--reason` and `--second` are logged and stamped on any token the action creates. No token, share, OTP, or password is ever printed; a failed action still revokes the root and cancels the attempt. This is the recovery for `provisioning` and `apps-auth` expiring 24 h after bootstrap.
+* New outputs `init_secret_arn` and `apps_auth_secret_arn`, so break-glass reads every platform secret by ARN. A cluster applied before this release is found by secret name.
+* Secrets Manager calls go to each ARN's region.
+
 # 0.4.1
 
 Module: `aws-ec2-vault-cluster` 0.4.1. No new AMI. A cluster that left `instance_type` unset rolls to the new size on its next apply.

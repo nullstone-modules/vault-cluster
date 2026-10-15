@@ -23,6 +23,11 @@ func New(cfg Config) (*Client, error) {
 	if cfg.HTTPTimeout > 0 {
 		ac.Timeout = cfg.HTTPTimeout
 	}
+	if cfg.TLSServerName != "" {
+		if err := ac.ConfigureTLS(&api.TLSConfig{TLSServerName: cfg.TLSServerName}); err != nil {
+			return nil, err
+		}
+	}
 	vc, err := api.NewClient(ac)
 	if err != nil {
 		return nil, err

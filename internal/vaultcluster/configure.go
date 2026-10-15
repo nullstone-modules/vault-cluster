@@ -22,7 +22,7 @@ func (c *Client) Configure() error {
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{"provisioning", "operator", "apps-auth", "apps-reader", "apps-writer", "tenant-reader", "tenant-writer", "tenant-database"} {
+	for _, name := range PlatformPolicies {
 		hcl, err := RenderPolicy(name, c.Cfg, acc)
 		if err != nil {
 			return err

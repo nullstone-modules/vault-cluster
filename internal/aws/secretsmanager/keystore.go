@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -34,7 +35,7 @@ func New(initARN, provisioningARN, operatorARN string) (*KeyStore, error) {
 		return nil, fmt.Errorf("AWS credentials: %w", err)
 	}
 	return &KeyStore{
-		Secrets:         smClient{inner: secretsmanager.NewFromConfig(cfg)},
+		Secrets:         NewClient(cfg),
 		InitARN:         initARN,
 		ProvisioningARN: provisioningARN,
 		OperatorARN:     operatorARN,
@@ -97,12 +98,39 @@ func (s KeyStore) LoadToken(name string) (string, error) {
 	return strings.TrimSpace(string(b)), nil
 }
 
+// smClient talks to each secret in the region of its ARN: Secrets Manager does not redirect a full ARN.
 type smClient struct {
-	inner *secretsmanager.Client
+	cfg     aws.Config
+	mu      sync.Mutex
+	clients map[string]*secretsmanager.Client
 }
 
-func (c smClient) Get(ctx context.Context, arn string) ([]byte, error) {
-	out, err := c.inner.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+// NewClient returns a SecretStore that picks the region from each ARN.
+func NewClient(cfg aws.Config) SecretStore {
+	return &smClient{cfg: cfg, clients: map[string]*secretsmanager.Client{}}
+}
+
+func (c *smClient) forARN(arn string) (*secretsmanager.Client, error) {
+	region, err := RegionOf(arn)
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if cl, ok := c.clients[region]; ok {
+		return cl, nil
+	}
+	cl := secretsmanager.NewFromConfig(c.cfg, func(o *secretsmanager.Options) { o.Region = region })
+	c.clients[region] = cl
+	return cl, nil
+}
+
+func (c *smClient) Get(ctx context.Context, arn string) ([]byte, error) {
+	inner, err := c.forARN(arn)
+	if err != nil {
+		return nil, err
+	}
+	out, err := inner.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
 		SecretId: aws.String(arn),
 	})
 	if err != nil {
@@ -117,8 +145,12 @@ func (c smClient) Get(ctx context.Context, arn string) ([]byte, error) {
 	return nil, fmt.Errorf("secrets manager get %s: empty secret", arn)
 }
 
-func (c smClient) Put(ctx context.Context, arn string, val []byte) error {
-	_, err := c.inner.PutSecretValue(ctx, &secretsmanager.PutSecretValueInput{
+func (c *smClient) Put(ctx context.Context, arn string, val []byte) error {
+	inner, err := c.forARN(arn)
+	if err != nil {
+		return err
+	}
+	_, err = inner.PutSecretValue(ctx, &secretsmanager.PutSecretValueInput{
 		SecretId:     aws.String(arn),
 		SecretString: aws.String(string(val)),
 	})
