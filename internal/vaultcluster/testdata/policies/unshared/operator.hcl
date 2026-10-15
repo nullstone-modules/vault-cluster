@@ -16,10 +16,6 @@ path "sys/mounts" {
   capabilities = ["read", "sudo"]
 }
 
-path "sys/mounts/database" {
-  capabilities = ["create", "update", "sudo"]
-}
-
 path "sys/mounts/*" {
   capabilities = ["read"]
 }
@@ -54,18 +50,6 @@ path "auth/approle-writer/role" {
 
 path "auth/approle-writer/role/*" {
   capabilities = ["read"]
-}
-
-path "database/roles" {
-  capabilities = ["list"]
-}
-
-path "database/roles/*" {
-  capabilities = ["read"]
-}
-
-path "database/config/*" {
-  capabilities = ["create", "update", "read"]
 }
 
 path "sys/leases/lookup" {
@@ -129,10 +113,6 @@ path "kv/data/*" {
 }
 
 path "kv/metadata/*" {
-  capabilities = ["deny"]
-}
-
-path "database/creds/*" {
   capabilities = ["deny"]
 }
 

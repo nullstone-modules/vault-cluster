@@ -10,12 +10,12 @@ import (
 
 var updateGolden = flag.Bool("update", false, "rewrite testdata/policies goldens")
 
-var allPolicies = []string{"provisioning", "operator", "apps-auth", "apps-reader", "apps-writer", "tenant-reader", "tenant-writer", "tenant-database"}
+var allPolicies = []string{"provisioning", "operator", "apps-auth", "apps-reader", "apps-writer", "tenant-reader", "tenant-writer"}
 
 var goldenAccessors = TenantAccessors{Reader: "auth_approle_1a2b3c4d", Writer: "auth_approle_5e6f7a8b"}
 
 func goldenConfig(shared bool) Config {
-	return Config{KVMount: "kv", TenantPrefix: "customers", EnvPrefix: "envs", DatabaseMount: "database", AuthMount: "approle", SharedEnvs: shared}
+	return Config{KVMount: "kv", TenantPrefix: "customers", EnvPrefix: "envs", AuthMount: "approle", SharedEnvs: shared}
 }
 
 // The unshared goldens must not move for shared-env support: an unshared cluster is unaffected by it.
@@ -63,10 +63,6 @@ func TestSharedPoliciesScopeByEntityMetadata(t *testing.T) {
 		if strings.Contains(hcl, "role_name") || !strings.Contains(hcl, `"kv/data/envs/*"`) {
 			t.Fatalf("%s must not use the role name and must deny the env prefix:\n%s", name, hcl)
 		}
-	}
-	db, _ := RenderPolicy("tenant-database", cfg, goldenAccessors)
-	if !strings.Contains(db, `"database/creds/tenant-`+env+`.`+tenant+`-*"`) {
-		t.Fatalf("tenant-database must scope creds by env and tenant:\n%s", db)
 	}
 	for _, name := range []string{"apps-reader", "apps-writer"} {
 		hcl, _ := RenderPolicy(name, cfg, goldenAccessors)

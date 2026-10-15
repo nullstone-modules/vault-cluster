@@ -41,10 +41,9 @@ Implemented:
 - Vault CE 2.0 (never `-dev`, never Enterprise)
 - Docker Compose, Raft on a named volume
 - KV v2 at `kv/customers/{tenant}/*`
-- Dynamic PostgreSQL credentials in the Go library only (`TestCredentialsMatrix`); the local stack runs no PostgreSQL and never mounts `database/`
 - File audit on a volume separate from Raft
 - Auto-init (first start) and one-shot Shamir unseal via `vault-utils`
-- Isolation tests in Go (`go test`); credentials tests in Go (`TestCredentialsMatrix`)
+- Isolation tests in Go (`go test`)
 - `bootstrap aws` (KMS auto-unseal, Secrets Manager tokens), health on 8210, S3 snapshots and S3 restore
 - AWS AMI, user-data, internal NLB (TLS 8200, health 8210), `vault.internal`, optional user-facing subdomain SNI, ASG (`cluster_size`), rolling instance refresh on launch-template change gated by lifecycle hooks (join before the old node leaves; leave the peer set before termination)
 
@@ -72,7 +71,7 @@ Docker Compose
   +-- vault-utils bootstrap   (one-shot: init, unseal, configure)
 ```
 
-Isolation and credentials tests are Go (`go test ./internal/vaultcluster`). Both run throwaway containers; the credentials suite brings its own PostgreSQL, so the local stack never runs one.
+Isolation tests are Go (`go test ./internal/vaultcluster`) and run throwaway containers.
 
 ## Repository layout
 
@@ -95,7 +94,7 @@ vault-cluster/
 
 Docker Desktop (Compose v2). Go 1.26 for `go test`. `curl` and `jq` for the manual examples below; Vault CLI for the action taken under break-glass.
 
-Images are pinned by tag and digest in `local/compose.yml` (Vault 2.0, PostgreSQL 18-alpine). Never `latest`.
+Images are pinned by tag and digest in `local/compose.yml` (Vault 2.0). Never `latest`.
 
 ```bash
 docker --version
@@ -167,7 +166,7 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 | `docker compose run --rm bootstrap snapshot take` | no | Raft snapshot plus SHA-256 |
 | `docker compose run --rm bootstrap snapshot restore <file> --yes` | yes | Replaces all Vault state |
 | `go test -short ./...` | no | Unit tests (tenant ID, policy lint, render, compose lint) — repo root |
-| `go test ./internal/vaultcluster` | no | Isolation and credentials (needs Docker) — repo root |
+| `go test ./internal/vaultcluster` | no | Isolation (needs Docker) — repo root |
 | `go test ./local` | no | Compose runtime conformance (needs Docker) — repo root |
 | `vault-utils env --org <org> --stack <stack> --env <env> --block <block>` | no | Shell settings for a Nullstone Vault cluster — your machine |
 | `vault-utils break-glass begin --reason <text> ...` | yes (root) | Mint a root token for the vault CLI; `break-glass end` revokes it (see [Break-glass](#break-glass)) — your machine |
@@ -189,8 +188,8 @@ kv/metadata/customers/{tenant_id}/*
 | Piece | Name | Purpose |
 |---|---|---|
 | AppRole mounts | `approle-reader`, `approle-writer` | One role per tenant, named by the tenant ID. Tokens last 15 minutes and cannot be renewed past that. Secret IDs last 60 seconds and work once. |
-| Tenant policies | `tenant-reader`, `tenant-writer`, `tenant-database` | Static, written at bootstrap. The tenant comes from the login role name (`{{identity.entity.aliases.<accessor>.metadata.role_name}}`), so nothing is written per tenant. |
-| Broker policies | `apps-reader`, `apps-writer` | Read `role-id` and mint `secret-id` for any onboarded tenant on one mount. No KV, database, or sys access. |
+| Tenant policies | `tenant-reader`, `tenant-writer` | Static, written at bootstrap. The tenant comes from the login role name (`{{identity.entity.aliases.<accessor>.metadata.role_name}}`), so nothing is written per tenant. |
+| Broker policies | `apps-reader`, `apps-writer` | Read `role-id` and mint `secret-id` for any onboarded tenant on one mount. No KV or sys access. |
 
 Tenant IDs: `^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$` (3-32 characters). Rejected: `/`, `..`, `*`, `sys`, `data`, `root`, `envs`, and similar reserved names.
 
@@ -228,7 +227,7 @@ cd local
 docker compose run --rm -e VAULT_TOKEN bootstrap tenants create acme-corp
 ```
 
-`tenants create` writes the reader and writer roles (and database roles when credentials are enabled). It prints no credentials; apps mint their own at login. Those roles are the record of truth: `tenants list` reads both mounts and flags a tenant missing from one.
+`tenants create` writes the reader and writer roles. It prints no credentials; apps mint their own at login. Those roles are the record of truth: `tenants list` reads both mounts and flags a tenant missing from one.
 
 Log in as one tenant, the way an app does per request (the provisioning token may also mint):
 
@@ -261,7 +260,7 @@ Cross-tenant, wildcard, and traversal reads return HTTP 403. That is the isolati
 | Identity | Role |
 |---|---|
 | Root | Bootstrap only. Revoked when setup finishes. |
-| Provisioning | Create and offboard tenants by writing AppRole and database roles. Cannot write policies; a role can carry only the static tenant policies. Can mint tenant logins, but cannot read tenant secrets with its own token. |
+| Provisioning | Create and offboard tenants by writing AppRole roles. Cannot write policies; a role can carry only the static tenant policies. Can mint tenant logins, but cannot read tenant secrets with its own token. |
 | App broker | `apps-reader` or `apps-writer`, from the app's cloud login. Mints one-tenant logins at its level. Reads nothing itself. |
 | Tenant token | One tenant, one level, 15 minutes. The result of a login on `approle-reader` or `approle-writer`. |
 | Operator | Health, mounts, snapshots. Can start generate-root (recovery keys still required). Not a tenant secret reader. Cannot restore. |
@@ -539,4 +538,3 @@ Create the preview env's tenants with `vault-utils tenants create <id> --env <en
 - Apps hold no tenant access directly: a broker token mints a 15-minute, one-tenant token per login
 - Operator cannot read tenant KV
 - Local Compose sets `disable_mlock = true` because Docker and GitHub Actions cannot mlock. Production hosts should use `IPC_LOCK`
-- Dynamic credentials (Go library and tests only): bounded TTL, revoke drops the Postgres role, residue scan expects zero leftover `v-*` roles

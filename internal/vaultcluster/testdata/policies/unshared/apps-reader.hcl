@@ -24,10 +24,6 @@ path "kv/*" {
   capabilities = ["deny"]
 }
 
-path "database/*" {
-  capabilities = ["deny"]
-}
-
 path "sys/*" {
   capabilities = ["deny"]
 }

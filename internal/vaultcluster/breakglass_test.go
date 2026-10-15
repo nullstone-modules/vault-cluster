@@ -17,7 +17,6 @@ func breakGlassCluster(t *testing.T) (*Client, FileKeyStore, *api.InitResponse) 
 	c.Cfg.TenantPrefix = "customers"
 	c.Cfg.EnvPrefix = "envs"
 	c.Cfg.AuthMount = "approle"
-	c.Cfg.DatabaseMount = "database"
 	c.Cfg.EnableAudit = false
 	if err := c.Configure(); err != nil {
 		t.Fatal(err)

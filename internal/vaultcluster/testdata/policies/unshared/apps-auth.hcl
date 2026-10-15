@@ -31,7 +31,3 @@ path "auth/token/renew-self" {
 path "kv/*" {
   capabilities = ["deny"]
 }
-
-path "database/creds/*" {
-  capabilities = ["deny"]
-}

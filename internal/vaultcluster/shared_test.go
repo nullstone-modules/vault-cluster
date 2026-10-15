@@ -19,7 +19,6 @@ func startSharedVault(t *testing.T) *Client {
 	c.Cfg.TenantPrefix = "customers"
 	c.Cfg.EnvPrefix = "envs"
 	c.Cfg.AuthMount = "approle"
-	c.Cfg.DatabaseMount = "database"
 	c.Cfg.EnableAudit = false
 	c.Cfg.SharedEnvs = true
 	c.Cfg.TokenTTL = "15m"

@@ -15,23 +15,15 @@ type Config struct {
 	KVMount       string
 	TenantPrefix  string
 	AuthMount     string
-	DatabaseMount string
 	// SharedEnvs scopes every tenant under an env (envs/{env}/customers/{tenant}). Set only on a cluster
 	// that several Nullstone envs share. Off, the cluster behaves exactly as an unshared one.
-	SharedEnvs        bool
-	EnvPrefix         string
-	AuditPath         string
-	AuditDevice       string
-	EnableAudit       bool
-	EnableCredentials bool
-	DatabaseURL       string
-	DatabaseUsername  string
-	DatabasePassword  string
-	DatabaseConnName  string
-	DatabaseTTL       string
-	DatabaseMaxTTL    string
-	TokenTTL          string
-	TokenMaxTTL       string
+	SharedEnvs  bool
+	EnvPrefix   string
+	AuditPath   string
+	AuditDevice string
+	EnableAudit bool
+	TokenTTL    string
+	TokenMaxTTL string
 	// AdminAuthMethod is the auth method the cluster module declares for its function (aws, gcp), mounted at
 	// auth/<method>. AdminPrincipal is the function's identity on it (IAM role ARN, service account email).
 	// Both empty on the local stack: no mount, no role.
@@ -42,24 +34,17 @@ type Config struct {
 
 func ConfigFromEnv() Config {
 	c := Config{
-		Addr:          getenv("VAULT_ADDR", ""),
-		Token:         getenv("VAULT_TOKEN", ""),
-		TLSServerName: getenv("VAULT_TLS_SERVER_NAME", ""),
-		KVMount:       getenv("KV_MOUNT", "kv"),
-		TenantPrefix:  getenv("TENANT_PREFIX", "customers"),
-		AuthMount:     getenv("AUTH_MOUNT", "approle"),
-		DatabaseMount: getenv("DATABASE_MOUNT", "database"),
-		SharedEnvs:    getenv("SHARED_ENVS", "false") == "true",
-		EnvPrefix:     getenv("ENV_PREFIX", "envs"),
-		AuditPath:     getenv("AUDIT_LOG_PATH", "/vault/logs/audit.log"),
-		AuditDevice:   getenv("AUDIT_DEVICE_NAME", "file"),
-		EnableAudit:   getenv("ENABLE_AUDIT", "true") == "true",
-		// The dynamic-credentials fields (EnableCredentials, DatabaseURL,
-		// DatabaseUsername, ...) are never set from the environment: the
-		// database engine is configured only by callers that opt in
-		// programmatically. DatabaseMount stays because the tenant and
-		// platform policies reference its paths even when the engine is
-		// not mounted.
+		Addr:            getenv("VAULT_ADDR", ""),
+		Token:           getenv("VAULT_TOKEN", ""),
+		TLSServerName:   getenv("VAULT_TLS_SERVER_NAME", ""),
+		KVMount:         getenv("KV_MOUNT", "kv"),
+		TenantPrefix:    getenv("TENANT_PREFIX", "customers"),
+		AuthMount:       getenv("AUTH_MOUNT", "approle"),
+		SharedEnvs:      getenv("SHARED_ENVS", "false") == "true",
+		EnvPrefix:       getenv("ENV_PREFIX", "envs"),
+		AuditPath:       getenv("AUDIT_LOG_PATH", "/vault/logs/audit.log"),
+		AuditDevice:     getenv("AUDIT_DEVICE_NAME", "file"),
+		EnableAudit:     getenv("ENABLE_AUDIT", "true") == "true",
 		TokenTTL:        getenv("DEFAULT_TOKEN_TTL", "15m"),
 		TokenMaxTTL:     getenv("MAX_TOKEN_TTL", "15m"),
 		AdminAuthMethod: getenv("VAULT_ADMIN_AUTH_METHOD", ""),
@@ -82,7 +67,7 @@ func (c Config) TenantMount(kind string) string {
 	return c.AuthMount + "-" + kind
 }
 
-// TenantPolicy is the static policy for one access kind (reader, writer, database).
+// TenantPolicy is the static policy for one access kind (reader, writer).
 func (c Config) TenantPolicy(kind string) string {
 	return "tenant-" + kind
 }

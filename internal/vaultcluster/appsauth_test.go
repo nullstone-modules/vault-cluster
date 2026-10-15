@@ -12,7 +12,6 @@ func TestConfigureBindsAppsAuthRole(t *testing.T) {
 	c.Cfg.KVMount = "kv"
 	c.Cfg.TenantPrefix = "customers"
 	c.Cfg.AuthMount = "approle"
-	c.Cfg.DatabaseMount = "database"
 	c.Cfg.EnableAudit = false
 	c.Cfg.AdminAuthMethod = "aws"
 	c.Cfg.AdminPrincipal = "arn:aws:iam::123456789012:role/vault-apps-auth*"
@@ -51,7 +50,6 @@ func TestConfigureSkipsAppsAuthWithoutMethod(t *testing.T) {
 	c.Cfg.KVMount = "kv"
 	c.Cfg.TenantPrefix = "customers"
 	c.Cfg.AuthMount = "approle"
-	c.Cfg.DatabaseMount = "database"
 	c.Cfg.EnableAudit = false
 	if err := c.Configure(); err != nil {
 		t.Fatal(err)

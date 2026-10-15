@@ -7,7 +7,6 @@ func TestOperatorBreakGlass(t *testing.T) {
 	c.Cfg.KVMount = "kv"
 	c.Cfg.TenantPrefix = "customers"
 	c.Cfg.AuthMount = "approle"
-	c.Cfg.DatabaseMount = "database"
 	c.Cfg.EnableAudit = false
 	if err := c.Configure(); err != nil {
 		t.Fatal(err)
