@@ -60,7 +60,7 @@ func TestInitSharesPrefersRecovery(t *testing.T) {
 }
 
 func TestDecodeRootToken(t *testing.T) {
-	token := "hvs.CAESIJ1234567890abcdefghij"
+	token := "s.1234567890abcdefghijklmnopq"
 	otp := strings.Repeat("ZsDZoHfm6LcAM7mFsSV9mtPoC5", 2)[:len(token)]
 	x := make([]byte, len(token))
 	for i := range x {
