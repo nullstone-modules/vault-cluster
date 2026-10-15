@@ -23,7 +23,6 @@ type KeyStore struct {
 	InitARN         string
 	ProvisioningARN string
 	OperatorARN     string
-	AppsAuthARN     string
 }
 
 func New(initARN, provisioningARN, operatorARN string) (*KeyStore, error) {
@@ -48,11 +47,6 @@ func (s KeyStore) tokenARN(name string) (string, error) {
 		return s.ProvisioningARN, nil
 	case "operator":
 		return s.OperatorARN, nil
-	case "apps-auth":
-		if s.AppsAuthARN == "" {
-			return "", fmt.Errorf("VAULT_APPS_AUTH_SECRET_ARN is required")
-		}
-		return s.AppsAuthARN, nil
 	default:
 		return "", fmt.Errorf("unknown token %q", name)
 	}

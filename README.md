@@ -171,6 +171,7 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 | `go test ./local` | no | Compose runtime conformance (needs Docker) — repo root |
 | `vault-utils env --org <org> --stack <stack> --env <env> --block <block>` | no | Shell settings for a Nullstone Vault cluster — your machine |
 | `vault-utils break-glass begin --reason <text> ...` | yes (root) | Mint a root token for the vault CLI; `break-glass end` revokes it (see [Break-glass](#break-glass)) — your machine |
+| `vault-utils configure` | no | Re-apply mounts, policies, and the `apps-auth` login role on a bootstrapped cluster (root token; `VAULT_ADMIN_ROLE_ARN` for the function role) — your machine |
 
 ## Tenant isolation
 
@@ -264,7 +265,7 @@ Cross-tenant, wildcard, and traversal reads return HTTP 403. That is the isolati
 | App broker | `apps-reader` or `apps-writer`, from the app's cloud login. Mints one-tenant logins at its level. Reads nothing itself. |
 | Tenant token | One tenant, one level, 15 minutes. The result of a login on `approle-reader` or `approle-writer`. |
 | Operator | Health, mounts, snapshots. Can start generate-root (recovery keys still required). Not a tenant secret reader. Cannot restore. |
-| Apps auth | Held by the cluster function. Writes app auth roles on the `aws` and `gcp` mounts (`apps-auth` policy). Cannot read tenant secrets. |
+| Apps auth | The cluster function, by IAM login on `auth/aws/role/apps-auth` (5-minute token, revoked after each invoke). Writes app auth roles on the `aws` and `gcp` mounts (`apps-auth` policy). Cannot read tenant secrets or enable mounts. |
 
 ## Health
 
@@ -378,7 +379,7 @@ vault-utils break-glass end --org acme --stack core --env prod --block vault
 
 Printed: the nonce, `required`, `progress`, and the revocation. Never printed: the operator token, the shares, the OTP, the encoded token, the root token. A failed `begin` cancels its attempt; an attempt left over from an earlier run is cancelled first and said so. `begin` refuses to run while a root is already saved; `end` refuses to revoke anything but a root token.
 
-The platform tokens (`provisioning`, `operator`, `apps-auth`) are for automation and break-glass, not for people. Until bootstrap renews every token, `provisioning` and `apps-auth` expire 24 h after bootstrap; re-minting them as above is the recovery.
+The platform tokens (`provisioning`, `operator`) are for automation and break-glass, not for people. Until bootstrap renews every token, `provisioning` expires 24 h after bootstrap; re-minting it as above is the recovery. The cluster function holds no token: it logs in through `auth/aws`.
 
 Pitfalls with the root in hand: `vault login` prints the token unless `-no-print`; `vault token lookup` prints the token `id`; `vault write ... password=-` stores a trailing newline when the shell adds one; Windows PowerShell 5.1 prefixes a UTF-8 BOM when piping to native commands.
 
@@ -447,7 +448,7 @@ To plan against real connections:
    - `unseal_key` → `datastore/aws/kms` (dedicated unseal key, not the bucket SSE key)
    - optional `subdomain` → `subdomain/aws/route53` (user-facing TLS name on the NLB)
 3. Run workspace preview/plan in Nullstone so `ns_connection` outputs resolve.
-4. In the plan, expect IAM, four Secrets Manager secrets (`init`, `provisioning`, `operator`, `apps-auth`; `protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A connected subdomain adds a user-facing cert (SNI) and alias. A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use output `vault_addr` (or `user_vault_addr`) with `tls_server_name`. The NLB terminates TLS only with a connected subdomain; Vault nodes listen HTTP.
+4. In the plan, expect IAM, three Secrets Manager secrets (`init`, `provisioning`, `operator`; `protect_platform_secrets` default true, 30-day recovery), node and NLB security groups, a launch template, an ACM cert for `vault.internal`, an alias on the network internal zone, an internal NLB with TLS on 8200 (health 8210), and an ASG of `cluster_size` (`max_size` is `cluster_size + 1` for surge). A connected subdomain adds a user-facing cert (SNI) and alias. A launch-template change starts a rolling instance refresh: one extra node joins, then one old node leaves. Clients use output `vault_addr` (or `user_vault_addr`) with `tls_server_name`. The NLB terminates TLS only with a connected subdomain; Vault nodes listen HTTP.
 
 Bake the node AMI (x86_64, matches default `t3.small`) from `vault-node/`:
 
@@ -480,7 +481,8 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 | Health 503 | Vault is sealed. Run `docker compose run --rm bootstrap` in `local/` |
 | Permission denied on tenant create | Use the provisioning token, not operator |
 | generate-root permission denied | Vault 2.0 needs the operator token. See [Break-glass](#break-glass). |
-| provisioning or apps-auth token expired | `break-glass begin`, re-mint it with `vault token create`, `break-glass end`. See [Break-glass](#break-glass). |
+| provisioning token expired | `break-glass begin`, re-mint it with `vault token create`, `break-glass end`. See [Break-glass](#break-glass). |
+| `aws-vault-access` apply fails with 403 or "auth/aws not enabled" | The cluster predates the IAM login for the function. `break-glass begin`, then `vault-utils configure` with `VAULT_ADMIN_ROLE_ARN` set to the function role (node env, or the cluster workspace), then `break-glass end`. |
 | Permission denied on tenant secrets | Expected for provisioning |
 | Everything denied | Audit volume full or unwritable |
 
@@ -531,7 +533,7 @@ Create the preview env's tenants with `vault-utils tenants create <id> --env <en
 - No Vault `-dev` mode
 - Root token revoked after bootstrap
 - Unseal keys, tokens, and `.env` are gitignored (mode 600). Never printed to logs
-- AWS platform secrets (`init`, `provisioning`, `operator`, `apps-auth`) have `prevent_destroy` (var `protect_platform_secrets`, default true) and a 30-day recovery window. Set the var to false before destroying the workspace.
+- AWS platform secrets (`init`, `provisioning`, `operator`) have `prevent_destroy` (var `protect_platform_secrets`, default true) and a 30-day recovery window. Set the var to false before destroying the workspace.
 - Audit values are HMAC'd. Raw secrets must not appear in the audit log
 - Provisioning cannot read tenant KV with its own token, write policies, or attach anything but the static tenant policies to a role (`allowed_parameters`)
 - Apps hold no tenant access directly: a broker token mints a 15-minute, one-tenant token per login

@@ -42,7 +42,7 @@ func TestSecretARNsFromOutputs(t *testing.T) {
 		"operator_secret_arn":     "arn:aws:secretsmanager:us-east-1:1:secret:vault/vault/operator/abc",
 		"provisioning_secret_arn": "arn:aws:secretsmanager:us-east-1:1:secret:vault/vault/provisioning/abc",
 	})
-	if err != nil || arns.init != "" || arns.appsAuth != "" || arns.operator == "" {
+	if err != nil || arns.init != "" || arns.operator == "" {
 		t.Fatalf("legacy outputs: %+v %v", arns, err)
 	}
 	if _, err := secretARNsFromOutputs(map[string]any{"vault_addr": "http://x"}); err == nil {

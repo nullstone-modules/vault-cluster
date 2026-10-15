@@ -35,6 +35,9 @@ func (c *Client) Configure() error {
 		}
 		log.Printf("applied policy %s", name)
 	}
+	if err := c.enableAppsAuth(); err != nil {
+		return err
+	}
 	if err := c.mountDatabase(); err != nil {
 		return err
 	}
@@ -184,4 +187,40 @@ func (c *Client) mountDatabase() error {
 		"password_authentication": "password",
 	})
 	return err
+}
+
+// AppsAuthRole is the auth/aws role the cluster function logs in with. It carries the apps-auth policy.
+const AppsAuthRole = "apps-auth"
+
+// enableAppsAuth mounts auth/aws and binds the cluster function's execution role to the apps-auth policy.
+// The function holds no token of its own: it logs in per invoke and revokes the token when done.
+// Without AdminRoleARN (local stack) the mount and role are left alone.
+func (c *Client) enableAppsAuth() error {
+	if c.Cfg.AdminRoleARN == "" {
+		log.Printf("VAULT_ADMIN_ROLE_ARN is not set; skipping the apps-auth login role")
+		return nil
+	}
+	auths, err := c.API.Sys().ListAuth()
+	if err != nil {
+		return err
+	}
+	if _, ok := auths["aws/"]; !ok {
+		if err := c.API.Sys().EnableAuthWithOptions("aws", &api.EnableAuthOptions{
+			Type:        "aws",
+			Description: "IAM logins: the cluster function and app brokers",
+		}); err != nil {
+			return fmt.Errorf("enable auth/aws: %w", err)
+		}
+	}
+	if _, err := c.API.Logical().Write("auth/aws/role/"+AppsAuthRole, map[string]any{
+		"auth_type":               "iam",
+		"bound_iam_principal_arn": []string{c.Cfg.AdminRoleARN},
+		"token_policies":          []string{AppsAuthRole},
+		"token_ttl":               "5m",
+		"token_max_ttl":           "5m",
+	}); err != nil {
+		return fmt.Errorf("write auth/aws/role/%s: %w", AppsAuthRole, err)
+	}
+	log.Printf("bound %s to auth/aws/role/%s", c.Cfg.AdminRoleARN, AppsAuthRole)
+	return nil
 }

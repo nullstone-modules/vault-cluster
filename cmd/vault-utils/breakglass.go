@@ -185,7 +185,7 @@ func resolveBreakGlassTarget(ctx context.Context, a breakGlassArgs, needStore bo
 
 // secretARNs are the platform secrets by token name, as the cluster workspace exports them.
 type secretARNs struct {
-	init, provisioning, operator, appsAuth string
+	init, provisioning, operator string
 }
 
 func secretARNsFromOutputs(out map[string]any) (secretARNs, error) {
@@ -197,7 +197,6 @@ func secretARNsFromOutputs(out map[string]any) (secretARNs, error) {
 		init:         str("init_secret_arn"),
 		provisioning: str("provisioning_secret_arn"),
 		operator:     str("operator_secret_arn"),
-		appsAuth:     str("apps_auth_secret_arn"),
 	}
 	if arns.operator == "" || arns.provisioning == "" {
 		return arns, fmt.Errorf("workspace has no operator_secret_arn / provisioning_secret_arn output; is it an AWS cluster that has been applied?")
@@ -228,6 +227,5 @@ func breakGlassKeyStore(ctx context.Context, block string, arns secretARNs) (vau
 		InitARN:         arns.init,
 		ProvisioningARN: arns.provisioning,
 		OperatorARN:     arns.operator,
-		AppsAuthARN:     arns.appsAuth,
 	}, nil
 }

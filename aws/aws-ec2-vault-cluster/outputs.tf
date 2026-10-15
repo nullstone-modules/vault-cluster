@@ -112,8 +112,3 @@ output "init_secret_arn" {
   value       = aws_secretsmanager_secret.platform["init"].arn
   description = "string ||| Secrets Manager ARN for the init material (recovery shares). Read only by break-glass."
 }
-
-output "apps_auth_secret_arn" {
-  value       = aws_secretsmanager_secret.platform["apps-auth"].arn
-  description = "string ||| Secrets Manager ARN for the apps-auth token held by the cluster function."
-}

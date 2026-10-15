@@ -32,7 +32,9 @@ type Config struct {
 	DatabaseMaxTTL    string
 	TokenTTL          string
 	TokenMaxTTL       string
-	HTTPTimeout       time.Duration
+	// AdminRoleARN is the cluster function's execution role, bound to auth/aws/role/apps-auth. Empty on the local stack.
+	AdminRoleARN string
+	HTTPTimeout  time.Duration
 }
 
 func ConfigFromEnv() Config {
@@ -55,9 +57,10 @@ func ConfigFromEnv() Config {
 		// programmatically. DatabaseMount stays because the tenant and
 		// platform policies reference its paths even when the engine is
 		// not mounted.
-		TokenTTL:    getenv("DEFAULT_TOKEN_TTL", "15m"),
-		TokenMaxTTL: getenv("MAX_TOKEN_TTL", "15m"),
-		HTTPTimeout: 15 * time.Second,
+		TokenTTL:     getenv("DEFAULT_TOKEN_TTL", "15m"),
+		TokenMaxTTL:  getenv("MAX_TOKEN_TTL", "15m"),
+		AdminRoleARN: getenv("VAULT_ADMIN_ROLE_ARN", ""),
+		HTTPTimeout:  15 * time.Second,
 	}
 	return c
 }
