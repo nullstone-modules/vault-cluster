@@ -11,20 +11,19 @@ import (
 func TestBreakGlassValidate(t *testing.T) {
 	store := FileKeyStore{Dir: t.TempDir()}
 	for name, bg := range map[string]BreakGlass{
-		"no reason": {Second: "s", Store: store},
-		"no second": {Reason: "r", Store: store},
-		"blank":     {Reason: " ", Second: "\t", Store: store},
-		"no store":  {Reason: "r", Second: "s"},
+		"no reason": {Store: store},
+		"blank":     {Reason: " ", Store: store},
+		"no store":  {Reason: "r"},
 	} {
 		if err := bg.Validate(); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	if err := (BreakGlass{Reason: "r", Second: "s", Store: store}).Validate(); err != nil {
+	if err := (BreakGlass{Reason: "r", Store: store}).Validate(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := (BreakGlass{Store: store}).Begin(&Client{}); err == nil {
-		t.Fatal("Begin without reason/second touched the cluster")
+		t.Fatal("Begin without a reason touched the cluster")
 	}
 }
 

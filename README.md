@@ -170,7 +170,7 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 | `go test ./internal/vaultcluster` | no | Isolation and credentials (needs Docker) — repo root |
 | `go test ./local` | no | Compose runtime conformance (needs Docker) — repo root |
 | `vault-utils env --org <org> --stack <stack> --env <env> --block <block>` | no | Shell settings for a Nullstone Vault cluster — your machine |
-| `vault-utils break-glass begin --reason <text> --second <name> ...` | yes (root) | Mint a root token for the vault CLI; `break-glass end` revokes it (see [Break-glass](#break-glass)) — your machine |
+| `vault-utils break-glass begin --reason <text> ...` | yes (root) | Mint a root token for the vault CLI; `break-glass end` revokes it (see [Break-glass](#break-glass)) — your machine |
 
 ## Tenant isolation
 
@@ -358,20 +358,20 @@ The Raft volume cannot be unsealed. Data is gone. That is Shamir working. Restor
 
 ## Break-glass
 
-Use only when no routine identity can do the job: re-mint an expired platform token, write a human policy, read tenant data in an incident, purge, restore. Two people. Record why first.
+Use only when no routine identity can do the job: re-mint an expired platform token, write a human policy, read tenant data in an incident, purge, restore. Record why first.
 
 `vault-utils break-glass begin` mints a root token from the operator token and the stored recovery (or unseal) shares and saves it where `vault login` would (the configured `token_helper`, else `~/.vault-token`). The `vault` CLI then uses it. Do the one recorded action, then `vault-utils break-glass end` revokes it. Nobody copies a token or pastes a share.
 
 ```bash
-vault-utils break-glass begin --reason <text> --second <name> [cluster flags]
+vault-utils break-glass begin --reason <text> [cluster flags]
 vault <one recorded action>
 vault-utils break-glass end [cluster flags]
 ```
 
-`--reason` and `--second` are required and logged with a timestamp. Cluster flags are the ones `env` takes (`--org --stack --env --block [--profile] [--internal]`); without them the command uses `VAULT_ADDR` plus `VAULT_INIT_SECRET_ARN`, `VAULT_OPERATOR_SECRET_ARN`, `VAULT_PROVISIONING_SECRET_ARN` (an AWS node), or `BOOTSTRAP_DIR` (the local stack). `VAULT_TOKEN` is ignored by both subcommands; unset it so the CLI picks up the saved root. Secrets Manager is called in each ARN's region. A cluster applied before `init_secret_arn` existed is found by name (`<block>/vault/init/`).
+`--reason` is required and logged with a timestamp. Cluster flags are the ones `env` takes (`--org --stack --env --block [--profile] [--internal]`); without them the command uses `VAULT_ADDR` plus `VAULT_INIT_SECRET_ARN`, `VAULT_OPERATOR_SECRET_ARN`, `VAULT_PROVISIONING_SECRET_ARN` (an AWS node), or `BOOTSTRAP_DIR` (the local stack). `VAULT_TOKEN` is ignored by both subcommands; unset it so the CLI picks up the saved root. Secrets Manager is called in each ARN's region. A cluster applied before `init_secret_arn` existed is found by name (`<block>/vault/init/`).
 
 ```bash
-vault-utils break-glass begin --reason "provisioning token expired" --second alex --org acme --stack core --env prod --block vault
+vault-utils break-glass begin --reason "provisioning token expired" --org acme --stack core --env prod --block vault
 vault token create -orphan -policy=provisioning -period=24h -display-name=provisioning -field=token | aws secretsmanager put-secret-value --secret-id <provisioning_secret_arn> --secret-string file:///dev/stdin
 vault-utils break-glass end --org acme --stack core --env prod --block vault
 ```

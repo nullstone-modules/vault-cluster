@@ -94,7 +94,7 @@ func TestBreakGlassBeginEnd(t *testing.T) {
 	opTok, _ := store.LoadToken("operator")
 
 	logs := &logBuf{}
-	bg := BreakGlass{Store: store, Reason: "provisioning expired", Second: "alex", Logf: logs.logf}
+	bg := BreakGlass{Store: store, Reason: "provisioning expired", Logf: logs.logf}
 	anon, _ := New(Config{Addr: c.Cfg.Addr, HTTPTimeout: c.Cfg.HTTPTimeout})
 	token, err := bg.Begin(anon)
 	if err != nil {
@@ -114,7 +114,7 @@ func TestBreakGlassBeginEnd(t *testing.T) {
 
 	text := logs.text()
 	mustNotContain(t, text, opTok, token, init.KeysB64[0], c.Cfg.Token)
-	for _, want := range []string{"nonce", "required 1", "progress 1/1", `reason="provisioning expired"`, `second="alex"`, "break-glass begin", "root token ready"} {
+	for _, want := range []string{"nonce", "required 1", "progress 1/1", `reason="provisioning expired"`, "break-glass begin", "root token ready"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("log lacks %q:\n%s", want, text)
 		}
@@ -150,7 +150,7 @@ func TestBreakGlassCancelsStaleAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	logs := &logBuf{}
-	bg := BreakGlass{Store: store, Reason: "drill", Second: "alex", Logf: logs.logf}
+	bg := BreakGlass{Store: store, Reason: "drill", Logf: logs.logf}
 	anon, _ := New(Config{Addr: c.Cfg.Addr, HTTPTimeout: c.Cfg.HTTPTimeout})
 	token, err := bg.Begin(anon)
 	if err != nil {
@@ -172,7 +172,7 @@ func TestBreakGlassBeginFailsCleanly(t *testing.T) {
 		t.Fatal(err)
 	}
 	logs := &logBuf{}
-	bg := BreakGlass{Store: store, Reason: "drill", Second: "alex", Logf: logs.logf}
+	bg := BreakGlass{Store: store, Reason: "drill", Logf: logs.logf}
 	anon, _ := New(Config{Addr: c.Cfg.Addr, HTTPTimeout: c.Cfg.HTTPTimeout})
 	if _, err := bg.Begin(anon); err == nil {
 		t.Fatal("bad share accepted")

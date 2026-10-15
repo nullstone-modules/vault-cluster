@@ -3,11 +3,11 @@ package main
 import "testing"
 
 func TestParseBreakGlassArgs(t *testing.T) {
-	got, err := parseBreakGlassArgs([]string{"begin", "--reason", "expired token", "--second", "alex", "--org", "acme", "--stack", "core", "--env", "prod", "--block", "vault"})
+	got, err := parseBreakGlassArgs([]string{"begin", "--reason", "expired token", "--org", "acme", "--stack", "core", "--env", "prod", "--block", "vault"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.sub != "begin" || got.reason != "expired token" || got.second != "alex" || got.stack != "core" || got.env != "prod" || got.block != "vault" || !got.usesNullstone() {
+	if got.sub != "begin" || got.reason != "expired token" || got.stack != "core" || got.env != "prod" || got.block != "vault" || !got.usesNullstone() {
 		t.Fatalf("got %+v", got)
 	}
 	got, err = parseBreakGlassArgs([]string{"end"})
@@ -24,11 +24,10 @@ func TestParseBreakGlassArgsRefusals(t *testing.T) {
 	cases := map[string][]string{
 		"no subcommand":   {},
 		"unknown":         {"remint"},
-		"missing reason":  {"begin", "--second", "s"},
-		"missing second":  {"begin", "--reason", "r"},
-		"blank reason":    {"begin", "--reason", "  ", "--second", "s"},
-		"partial cluster": {"begin", "--reason", "r", "--second", "s", "--stack", "core"},
-		"unknown flag":    {"begin", "--reason", "r", "--second", "s", "--force"},
+		"missing reason":  {"begin"},
+		"blank reason":    {"begin", "--reason", "  "},
+		"partial cluster": {"begin", "--reason", "r", "--stack", "core"},
+		"unknown flag":    {"begin", "--reason", "r", "--force"},
 		"extra argument":  {"end", "now"},
 	}
 	for name, args := range cases {

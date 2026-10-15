@@ -16,7 +16,6 @@ import (
 type BreakGlass struct {
 	Store  KeyStore
 	Reason string
-	Second string
 	// Logf receives the audit trail (nonce, required, progress). Defaults to log.Printf.
 	Logf func(format string, args ...any)
 }
@@ -29,13 +28,10 @@ func (bg BreakGlass) logf(format string, args ...any) {
 	log.Printf(format, args...)
 }
 
-// Validate enforces the two-person rule before any Vault call.
+// Validate requires a recorded reason before any Vault call.
 func (bg BreakGlass) Validate() error {
 	if strings.TrimSpace(bg.Reason) == "" {
 		return fmt.Errorf("--reason is required: record why before touching root")
-	}
-	if strings.TrimSpace(bg.Second) == "" {
-		return fmt.Errorf("--second is required: name the second person")
 	}
 	if bg.Store == nil {
 		return fmt.Errorf("no key store")
@@ -49,7 +45,7 @@ func (bg BreakGlass) Begin(c *Client) (string, error) {
 	if err := bg.Validate(); err != nil {
 		return "", err
 	}
-	bg.logf("break-glass begin %s reason=%q second=%q", time.Now().UTC().Format(time.RFC3339), bg.Reason, bg.Second)
+	bg.logf("break-glass begin %s reason=%q", time.Now().UTC().Format(time.RFC3339), bg.Reason)
 
 	operatorToken, err := bg.Store.LoadToken("operator")
 	if err != nil {

@@ -60,7 +60,7 @@ There is no per-person login. A human uses a platform token from Secrets Manager
 |---|---|---|
 | Provisioning (`provisioning_secret_arn`) | `tenants create / list / destroy`, `envs list / destroy`; on a shared cluster also the tenant entities. Mint any tenant's login. | Read tenant KV with its own token, write policies, give an entity policies, touch groups or OIDC |
 | Operator (`operator_secret_arn`) | Health, mounts, snapshots, start generate-root | Read tenant KV, restore |
-| Break-glass root | Restore, purge, read tenant data in an incident, re-mint `provisioning` or `apps-auth`, write a human policy | Kept: `vault-utils break-glass begin --reason --second` mints it from operator plus the recovery shares (`init_secret_arn`) for the vault CLI; one action; `break-glass end` revokes it |
+| Break-glass root | Restore, purge, read tenant data in an incident, re-mint `provisioning` or `apps-auth`, write a human policy | Kept: `vault-utils break-glass begin --reason` mints it from operator plus the recovery shares (`init_secret_arn`) for the vault CLI; one action; `break-glass end` revokes it |
 
 The function's `apps-auth` token (`apps_auth_secret_arn`) writes app auth roles and, on a shared cluster, app entities. It cannot read tenant secrets.
 

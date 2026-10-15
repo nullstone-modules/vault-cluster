@@ -14,7 +14,7 @@ import (
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster"
 )
 
-const breakGlassUsage = `usage: vault-utils break-glass begin --reason <text> --second <name> [cluster flags]
+const breakGlassUsage = `usage: vault-utils break-glass begin --reason <text> [cluster flags]
        vault-utils break-glass end [cluster flags]
 
 begin mints a root token from the operator token and the stored recovery shares and saves it where
@@ -26,7 +26,7 @@ VAULT_*_SECRET_ARN variables (AWS) or BOOTSTRAP_DIR (local) are set.`
 // breakGlassArgs is the parsed command line. Nothing in here is secret.
 type breakGlassArgs struct {
 	sub                             string
-	reason, second                  string
+	reason                          string
 	org, stack, env, block, profile string
 	internal                        bool
 }
@@ -43,7 +43,6 @@ func parseBreakGlassArgs(args []string) (breakGlassArgs, error) {
 	fs := flag.NewFlagSet("break-glass "+out.sub, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.StringVar(&out.reason, "reason", "", "why root is needed (recorded)")
-	fs.StringVar(&out.second, "second", "", "the second person (recorded)")
 	fs.StringVar(&out.org, "org", "", "Nullstone org")
 	fs.StringVar(&out.stack, "stack", "", "Nullstone stack")
 	fs.StringVar(&out.env, "env", "", "Nullstone environment")
@@ -56,8 +55,8 @@ func parseBreakGlassArgs(args []string) (breakGlassArgs, error) {
 	if fs.NArg() > 0 {
 		return out, fmt.Errorf("unexpected argument %q\n%s", fs.Arg(0), breakGlassUsage)
 	}
-	if out.sub == "begin" && (strings.TrimSpace(out.reason) == "" || strings.TrimSpace(out.second) == "") {
-		return out, fmt.Errorf("--reason and --second are required\n%s", breakGlassUsage)
+	if out.sub == "begin" && strings.TrimSpace(out.reason) == "" {
+		return out, fmt.Errorf("--reason is required\n%s", breakGlassUsage)
 	}
 	if (out.stack != "" || out.env != "" || out.block != "") && (out.stack == "" || out.env == "" || out.block == "") {
 		return out, fmt.Errorf("--stack, --env, and --block go together\n%s", breakGlassUsage)
@@ -101,7 +100,7 @@ func breakGlassBegin(cfg vaultcluster.Config, store vaultcluster.KeyStore, a bre
 		}
 		log.Printf("replacing the saved vault login token (it is not revoked)")
 	}
-	bg := vaultcluster.BreakGlass{Store: store, Reason: a.reason, Second: a.second, Logf: log.Printf}
+	bg := vaultcluster.BreakGlass{Store: store, Reason: a.reason, Logf: log.Printf}
 	token, err := bg.Begin(c)
 	if err != nil {
 		return err

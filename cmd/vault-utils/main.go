@@ -51,7 +51,7 @@ Commands:
   health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
   lifecycle                         ASG node: continue the launch hook once a caught-up voter; leave Raft before termination
   env --org --stack --env --block   Print shell settings for a Nullstone Vault cluster workspace
-  break-glass begin --reason <text> --second <name> [cluster flags]
+  break-glass begin --reason <text> [cluster flags]
                                     Mint a root token into the vault CLI token store
   break-glass end [cluster flags]   Revoke it
 
