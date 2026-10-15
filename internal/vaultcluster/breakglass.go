@@ -10,22 +10,15 @@ import (
 	"github.com/hashicorp/vault/api"
 )
 
-// BreakGlass mints a root token from the operator token and the stored recovery (or unseal) shares,
-// runs exactly one action with it, and revokes it. The generate-root attempt is cancelled and the root
-// revoked on every exit path, including a panic in the action. Nothing here logs a token, a share, the
-// OTP, or the encoded token.
+// BreakGlass mints a root token from the operator token and the stored recovery (or unseal) shares.
+// Begin returns the token and nothing else; End revokes it. A failed Begin cancels its generate-root
+// attempt. Nothing here logs a token, a share, the OTP, or the encoded token.
 type BreakGlass struct {
 	Store  KeyStore
 	Reason string
 	Second string
-	// Logf receives the audit trail (nonce, required, progress, revocation). Defaults to log.Printf.
+	// Logf receives the audit trail (nonce, required, progress). Defaults to log.Printf.
 	Logf func(format string, args ...any)
-}
-
-// Action is one recorded break-glass step. Name is what the log records; Run gets a client holding the root token.
-type Action interface {
-	Name() string
-	Run(root *Client) error
 }
 
 func (bg BreakGlass) logf(format string, args ...any) {
@@ -50,73 +43,76 @@ func (bg BreakGlass) Validate() error {
 	return nil
 }
 
-// TokenMeta is stamped on any token an action creates.
-func (bg BreakGlass) TokenMeta() map[string]string {
-	return map[string]string{
-		"break_glass_reason": bg.Reason,
-		"break_glass_second": bg.Second,
-		"break_glass_at":     time.Now().UTC().Format(time.RFC3339),
-	}
-}
-
-// Run performs the whole flow on c, which needs only an address. Any token on c is ignored.
-func (bg BreakGlass) Run(c *Client, action Action) (err error) {
+// Begin generates a root token on c, which needs only an address; any token on c is ignored. The token is
+// verified with lookup-self before it is returned. An attempt left over from an earlier run is cancelled first.
+func (bg BreakGlass) Begin(c *Client) (string, error) {
 	if err := bg.Validate(); err != nil {
-		return err
+		return "", err
 	}
-	if action == nil {
-		return fmt.Errorf("no action")
-	}
-	start := time.Now().UTC()
-	bg.logf("break-glass start %s action=%s reason=%q second=%q", start.Format(time.RFC3339), action.Name(), bg.Reason, bg.Second)
-	defer func() {
-		bg.logf("break-glass end %s action=%s reason=%q second=%q ok=%t", time.Now().UTC().Format(time.RFC3339), action.Name(), bg.Reason, bg.Second, err == nil)
-	}()
+	bg.logf("break-glass begin %s reason=%q second=%q", time.Now().UTC().Format(time.RFC3339), bg.Reason, bg.Second)
 
 	operatorToken, err := bg.Store.LoadToken("operator")
 	if err != nil {
-		return fmt.Errorf("operator token: %w", err)
+		return "", fmt.Errorf("operator token: %w", err)
 	}
 	op := c.WithToken(operatorToken)
 
 	initResp, err := bg.Store.LoadInit()
 	if err != nil {
-		return fmt.Errorf("init material: %w", err)
+		return "", fmt.Errorf("init material: %w", err)
 	}
 	shares := initShares(initResp)
 	if len(shares) == 0 {
-		return fmt.Errorf("init material holds no recovery or unseal shares")
+		return "", fmt.Errorf("init material holds no recovery or unseal shares")
 	}
 
 	if err := cancelStaleAttempt(op, bg.logf); err != nil {
-		return err
+		return "", err
 	}
-
-	rootToken, err := generateRoot(op, shares, bg.logf)
+	token, err := generateRoot(op, shares, bg.logf)
 	if err != nil {
-		return err
+		return "", err
 	}
-	root := c.WithToken(rootToken)
-	defer func() {
-		if rerr := root.API.Auth().Token().RevokeSelf(""); rerr != nil {
-			bg.logf("root token revocation FAILED: %v", rerr)
-			if err == nil {
-				err = fmt.Errorf("root token revocation failed: %w", rerr)
-			}
-			return
-		}
-		bg.logf("revoked the root token")
-	}()
-	if _, err := root.API.Auth().Token().LookupSelf(); err != nil {
-		return fmt.Errorf("root token does not work: %w", err)
+	if _, err := c.WithToken(token).API.Auth().Token().LookupSelf(); err != nil {
+		return "", fmt.Errorf("root token does not work: %w", err)
 	}
+	bg.logf("root token ready; run `vault-utils break-glass end` when the action is done")
+	return token, nil
+}
 
-	bg.logf("running action %s", action.Name())
-	if err := action.Run(root); err != nil {
-		return fmt.Errorf("action %s: %w", action.Name(), err)
+// End revokes a break-glass root token. It refuses any token that does not hold the root policy, so a
+// saved operator or admin login is never revoked by mistake.
+func End(c *Client, token string, logf func(string, ...any)) error {
+	if logf == nil {
+		logf = log.Printf
 	}
-	bg.logf("action %s done", action.Name())
+	root := c.WithToken(token)
+	sec, err := root.API.Auth().Token().LookupSelf()
+	if err != nil {
+		return fmt.Errorf("token lookup: %w", err)
+	}
+	if !IsRootToken(sec) {
+		return fmt.Errorf("the saved token is not a root token (policies %v); nothing revoked", sec.Data["policies"])
+	}
+	if err := root.API.Auth().Token().RevokeSelf(""); err != nil {
+		return fmt.Errorf("revoke root token: %w", err)
+	}
+	logf("break-glass end %s: revoked the root token", time.Now().UTC().Format(time.RFC3339))
 	return nil
+}
+
+// IsRootToken reports whether a lookup-self result holds the root policy.
+func IsRootToken(sec *api.Secret) bool {
+	if sec == nil {
+		return false
+	}
+	pols, _ := sec.Data["policies"].([]any)
+	for _, p := range pols {
+		if p == "root" {
+			return true
+		}
+	}
+	return false
 }
 
 func cancelStaleAttempt(op *Client, logf func(string, ...any)) error {
@@ -222,23 +218,4 @@ func DecodeRootToken(encoded, otp string) (string, error) {
 		out[i] = raw[i] ^ otp[i]
 	}
 	return string(out), nil
-}
-
-// issueOrphanTokenWithMeta is issueOrphanToken with token metadata (the break-glass record).
-func (c *Client) issueOrphanTokenWithMeta(policy string, meta map[string]string) (string, error) {
-	sec, err := c.API.Auth().Token().Create(&api.TokenCreateRequest{
-		Policies:    []string{policy},
-		Period:      "24h",
-		Renewable:   boolPtr(true),
-		DisplayName: policy,
-		NoParent:    true,
-		Metadata:    meta,
-	})
-	if err != nil {
-		return "", err
-	}
-	if sec == nil || sec.Auth == nil {
-		return "", fmt.Errorf("failed to issue %s token", policy)
-	}
-	return sec.Auth.ClientToken, nil
 }

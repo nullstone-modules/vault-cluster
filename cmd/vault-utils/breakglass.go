@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -15,29 +14,33 @@ import (
 	"github.com/nullstone-modules/vault-cluster/internal/vaultcluster"
 )
 
-const breakGlassUsage = `usage: vault-utils break-glass --reason <text> --second <name> [cluster flags] <action> [args]
+const breakGlassUsage = `usage: vault-utils break-glass begin --reason <text> --second <name> [cluster flags]
+       vault-utils break-glass end [cluster flags]
+
+begin mints a root token from the operator token and the stored recovery shares and saves it where
+"vault login" would (the token helper, else ~/.vault-token). end revokes it and removes it.
 
 Cluster flags: --org --stack --env --block [--profile] [--internal], or none when VAULT_ADDR and the
-VAULT_*_SECRET_ARN variables (AWS) or BOOTSTRAP_DIR (local) are set.
+VAULT_*_SECRET_ARN variables (AWS) or BOOTSTRAP_DIR (local) are set.`
 
-Actions (one per run):
-  remint provisioning|apps-auth        Re-issue the platform token and store it
-  policy write <name> <file>           Write an ACL policy (platform policies refused)
-  userpass enable [--first-admin <n>]  Enable userpass; create the first admin (password from the terminal)
-  exec -- <command> [args]             Run a command with the root token in its environment`
-
-// breakGlassArgs is the parsed command line. Action words follow the flags; nothing in here is secret.
+// breakGlassArgs is the parsed command line. Nothing in here is secret.
 type breakGlassArgs struct {
+	sub                             string
 	reason, second                  string
 	org, stack, env, block, profile string
 	internal                        bool
-	action                          string
-	actionArgs                      []string
 }
 
 func parseBreakGlassArgs(args []string) (breakGlassArgs, error) {
 	var out breakGlassArgs
-	fs := flag.NewFlagSet("break-glass", flag.ContinueOnError)
+	if len(args) == 0 {
+		return out, fmt.Errorf("begin or end is required\n%s", breakGlassUsage)
+	}
+	out.sub = args[0]
+	if out.sub != "begin" && out.sub != "end" {
+		return out, fmt.Errorf("unknown subcommand %q\n%s", out.sub, breakGlassUsage)
+	}
+	fs := flag.NewFlagSet("break-glass "+out.sub, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.StringVar(&out.reason, "reason", "", "why root is needed (recorded)")
 	fs.StringVar(&out.second, "second", "", "the second person (recorded)")
@@ -47,17 +50,15 @@ func parseBreakGlassArgs(args []string) (breakGlassArgs, error) {
 	fs.StringVar(&out.block, "block", "", "Vault cluster block")
 	fs.StringVar(&out.profile, "profile", "", "nullstone CLI profile")
 	fs.BoolVar(&out.internal, "internal", false, "use vault.internal instead of the user-facing name")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args[1:]); err != nil {
 		return out, fmt.Errorf("%w\n%s", err, breakGlassUsage)
 	}
-	if strings.TrimSpace(out.reason) == "" || strings.TrimSpace(out.second) == "" {
+	if fs.NArg() > 0 {
+		return out, fmt.Errorf("unexpected argument %q\n%s", fs.Arg(0), breakGlassUsage)
+	}
+	if out.sub == "begin" && (strings.TrimSpace(out.reason) == "" || strings.TrimSpace(out.second) == "") {
 		return out, fmt.Errorf("--reason and --second are required\n%s", breakGlassUsage)
 	}
-	rest := fs.Args()
-	if len(rest) == 0 {
-		return out, fmt.Errorf("an action is required\n%s", breakGlassUsage)
-	}
-	out.action, out.actionArgs = rest[0], rest[1:]
 	if (out.stack != "" || out.env != "" || out.block != "") && (out.stack == "" || out.env == "" || out.block == "") {
 		return out, fmt.Errorf("--stack, --env, and --block go together\n%s", breakGlassUsage)
 	}
@@ -66,88 +67,85 @@ func parseBreakGlassArgs(args []string) (breakGlassArgs, error) {
 
 func (a breakGlassArgs) usesNullstone() bool { return a.stack != "" }
 
-// buildAction turns the action words into an Action. Everything it can refuse without a cluster, it refuses here.
-func buildAction(a breakGlassArgs, bg vaultcluster.BreakGlass, readPassword func() (string, error)) (vaultcluster.Action, error) {
-	args := a.actionArgs
-	switch a.action {
-	case "remint":
-		if len(args) != 1 {
-			return nil, fmt.Errorf("usage: break-glass ... remint provisioning|apps-auth")
-		}
-		act := vaultcluster.RemintAction{Token: args[0], BG: bg}
-		return act, act.Check()
-	case "policy":
-		if len(args) != 3 || args[0] != "write" {
-			return nil, fmt.Errorf("usage: break-glass ... policy write <name> <file>")
-		}
-		hcl, err := os.ReadFile(args[2])
-		if err != nil {
-			return nil, err
-		}
-		act := &vaultcluster.PolicyWriteAction{Policy: args[1], HCL: string(hcl), Logf: bg.Logf}
-		return act, act.Check()
-	case "userpass":
-		if len(args) < 1 || args[0] != "enable" {
-			return nil, fmt.Errorf("usage: break-glass ... userpass enable [--first-admin <name>]")
-		}
-		act := vaultcluster.UserpassAction{Logf: bg.Logf, ReadPassword: readPassword}
-		switch {
-		case len(args) == 1:
-		case len(args) == 3 && args[1] == "--first-admin" && args[2] != "":
-			act.FirstAdmin = args[2]
-		case len(args) == 2 && strings.HasPrefix(args[1], "--first-admin=") && len(args[1]) > len("--first-admin="):
-			act.FirstAdmin = strings.TrimPrefix(args[1], "--first-admin=")
-		default:
-			return nil, fmt.Errorf("usage: break-glass ... userpass enable [--first-admin <name>]")
-		}
-		return act, nil
-	case "exec":
-		if len(args) > 0 && args[0] == "--" {
-			args = args[1:]
-		}
-		if len(args) == 0 {
-			return nil, fmt.Errorf("usage: break-glass ... exec -- <command> [args]")
-		}
-		return vaultcluster.ExecAction{Argv: args, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr}, nil
-	default:
-		return nil, fmt.Errorf("unknown action %q\n%s", a.action, breakGlassUsage)
-	}
-}
-
 func runBreakGlass(args []string) error {
 	a, err := parseBreakGlassArgs(args)
 	if err != nil {
 		return err
 	}
-	// Refuse a bad action before any network call.
-	if _, err := buildAction(a, vaultcluster.BreakGlass{}, nil); err != nil {
-		return err
+	ctx := context.Background()
+	if a.sub == "end" {
+		cfg, _, err := resolveBreakGlassTarget(ctx, a, false)
+		if err != nil {
+			return err
+		}
+		return breakGlassEnd(cfg)
 	}
-	cfg, store, err := resolveBreakGlassTarget(context.Background(), a)
+	cfg, store, err := resolveBreakGlassTarget(ctx, a, true)
 	if err != nil {
 		return err
 	}
-	bg := vaultcluster.BreakGlass{Store: store, Reason: a.reason, Second: a.second, Logf: log.Printf}
-	action, err := buildAction(a, bg, readPasswordFromTerminal)
-	if err != nil {
-		return err
-	}
+	return breakGlassBegin(cfg, store, a)
+}
+
+func breakGlassBegin(cfg vaultcluster.Config, store vaultcluster.KeyStore, a breakGlassArgs) error {
 	c, err := vaultcluster.New(cfg)
 	if err != nil {
 		return err
 	}
-	return bg.Run(c, action)
+	if saved, err := vaultcluster.HelperToken(); err != nil {
+		return err
+	} else if saved != "" {
+		sec, err := c.WithToken(saved).API.Auth().Token().LookupSelf()
+		if err == nil && vaultcluster.IsRootToken(sec) {
+			return fmt.Errorf("a break-glass root token is already saved; run `vault-utils break-glass end` first")
+		}
+		log.Printf("replacing the saved vault login token (it is not revoked)")
+	}
+	bg := vaultcluster.BreakGlass{Store: store, Reason: a.reason, Second: a.second, Logf: log.Printf}
+	token, err := bg.Begin(c)
+	if err != nil {
+		return err
+	}
+	if err := vaultcluster.StoreHelperToken(token); err != nil {
+		if rerr := c.WithToken(token).API.Auth().Token().RevokeSelf(""); rerr != nil {
+			return fmt.Errorf("saving the root token failed (%v) and revoking it failed too: %w", err, rerr)
+		}
+		return fmt.Errorf("saving the root token failed; it was revoked: %w", err)
+	}
+	log.Printf("root token saved for the vault CLI (unset VAULT_TOKEN to use it); revoke with `vault-utils break-glass end`")
+	return nil
 }
 
-// resolveBreakGlassTarget finds the cluster address and key store. With --stack/--env/--block it reads the
-// Nullstone workspace outputs; otherwise VAULT_ADDR plus the secret ARNs (AWS) or BOOTSTRAP_DIR (local).
-// VAULT_TOKEN is ignored: break-glass always starts from the stored operator token.
-func resolveBreakGlassTarget(ctx context.Context, a breakGlassArgs) (vaultcluster.Config, vaultcluster.KeyStore, error) {
+func breakGlassEnd(cfg vaultcluster.Config) error {
+	c, err := vaultcluster.New(cfg)
+	if err != nil {
+		return err
+	}
+	token, err := vaultcluster.HelperToken()
+	if err != nil {
+		return err
+	}
+	if token == "" {
+		return fmt.Errorf("no saved token; nothing to revoke")
+	}
+	if err := vaultcluster.End(c, token, log.Printf); err != nil {
+		return err
+	}
+	return vaultcluster.EraseHelperToken()
+}
+
+// resolveBreakGlassTarget finds the cluster address and, for begin, the key store. With --stack/--env/--block
+// it reads the Nullstone workspace outputs; otherwise VAULT_ADDR plus the secret ARNs (AWS) or BOOTSTRAP_DIR
+// (local). VAULT_TOKEN is ignored: begin starts from the stored operator token, end from the saved root.
+func resolveBreakGlassTarget(ctx context.Context, a breakGlassArgs, needStore bool) (vaultcluster.Config, vaultcluster.KeyStore, error) {
 	cfg := vaultcluster.ConfigFromEnv()
 	cfg.Token = ""
 	if !a.usesNullstone() {
 		if cfg.Addr == "" {
 			return cfg, nil, fmt.Errorf("set VAULT_ADDR, or pass --org --stack --env --block")
+		}
+		if !needStore {
+			return cfg, nil, nil
 		}
 		store, err := keyStore()
 		return cfg, store, err
@@ -175,6 +173,9 @@ func resolveBreakGlassTarget(ctx context.Context, a breakGlassArgs) (vaultcluste
 		log.Printf("note: %s", s.Note)
 	}
 	cfg.Addr, cfg.TLSServerName, cfg.SharedEnvs = s.Addr, s.TLSServerName, s.SharedEnvs
+	if !needStore {
+		return cfg, nil, nil
+	}
 	arns, err := secretARNsFromOutputs(ws.Outputs)
 	if err != nil {
 		return cfg, nil, err
@@ -205,29 +206,23 @@ func secretARNsFromOutputs(out map[string]any) (secretARNs, error) {
 	return arns, nil
 }
 
-// breakGlassKeyStore builds the Secrets Manager store. Clusters applied before the module exported
-// init_secret_arn and apps_auth_secret_arn are found by name prefix (<block>/vault/<name>/) in the
-// operator secret's region.
+// breakGlassKeyStore builds the Secrets Manager store. A cluster applied before the module exported
+// init_secret_arn is found by name prefix (<block>/vault/init/) in the operator secret's region.
 func breakGlassKeyStore(ctx context.Context, block string, arns secretARNs) (vaultcluster.KeyStore, error) {
 	awsCfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("AWS credentials: %w", err)
 	}
-	region, err := secretsmanager.RegionOf(arns.operator)
-	if err != nil {
-		return nil, err
-	}
-	lister := secretsmanager.NewLister(awsCfg, region)
 	if arns.init == "" {
-		if arns.init, err = secretsmanager.FindByPrefix(ctx, lister, block+"/vault/init/"); err != nil {
+		region, err := secretsmanager.RegionOf(arns.operator)
+		if err != nil {
+			return nil, err
+		}
+		arns.init, err = secretsmanager.FindByPrefix(ctx, secretsmanager.NewLister(awsCfg, region), block+"/vault/init/")
+		if err != nil {
 			return nil, fmt.Errorf("init secret (apply the cluster to export init_secret_arn): %w", err)
 		}
 		log.Printf("init secret found by name: %s", arns.init)
-	}
-	if arns.appsAuth == "" {
-		if arns.appsAuth, err = secretsmanager.FindByPrefix(ctx, lister, block+"/vault/apps-auth/"); err != nil {
-			log.Printf("apps-auth secret not found by name; remint apps-auth needs apps_auth_secret_arn: %v", err)
-		}
 	}
 	return &secretsmanager.KeyStore{
 		Secrets:         secretsmanager.NewClient(awsCfg),
@@ -236,8 +231,4 @@ func breakGlassKeyStore(ctx context.Context, block string, arns secretARNs) (vau
 		OperatorARN:     arns.operator,
 		AppsAuthARN:     arns.appsAuth,
 	}, nil
-}
-
-func readPasswordFromTerminal() (string, error) {
-	return vaultcluster.ReadPasswordFromTerminal(os.Stdin, os.Stderr)
 }

@@ -312,7 +312,20 @@ func (c *Client) databaseMounted() bool {
 }
 
 func (c *Client) issueOrphanToken(policy string) (string, error) {
-	return c.issueOrphanTokenWithMeta(policy, nil)
+	sec, err := c.API.Auth().Token().Create(&api.TokenCreateRequest{
+		Policies:    []string{policy},
+		Period:      "24h",
+		Renewable:   boolPtr(true),
+		DisplayName: policy,
+		NoParent:    true,
+	})
+	if err != nil {
+		return "", err
+	}
+	if sec == nil || sec.Auth == nil {
+		return "", fmt.Errorf("failed to issue %s token", policy)
+	}
+	return sec.Auth.ClientToken, nil
 }
 
 func boolPtr(b bool) *bool { return &b }

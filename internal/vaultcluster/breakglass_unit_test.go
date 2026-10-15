@@ -23,8 +23,8 @@ func TestBreakGlassValidate(t *testing.T) {
 	if err := (BreakGlass{Reason: "r", Second: "s", Store: store}).Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := (BreakGlass{Store: store}).Run(&Client{}, nil); err == nil {
-		t.Fatal("Run without reason/second touched the cluster")
+	if _, err := (BreakGlass{Store: store}).Begin(&Client{}); err == nil {
+		t.Fatal("Begin without reason/second touched the cluster")
 	}
 }
 
@@ -85,59 +85,31 @@ func TestDecodeRootToken(t *testing.T) {
 	}
 }
 
-func TestTrimPassword(t *testing.T) {
-	for in, want := range map[string]string{
-		"hunter2\n":   "hunter2",
-		"hunter2\r\n": "hunter2",
-		"hunter2":     "hunter2",
-		"hunter2\n\n": "hunter2\n",
-		" hunter2 ":   " hunter2 ",
-	} {
-		if got := TrimPassword(in); got != want {
-			t.Errorf("%q: got %q want %q", in, got, want)
-		}
+func TestIsRootToken(t *testing.T) {
+	if !IsRootToken(&api.Secret{Data: map[string]any{"policies": []any{"root"}}}) {
+		t.Fatal("root not recognised")
+	}
+	if IsRootToken(&api.Secret{Data: map[string]any{"policies": []any{"default", "operator"}}}) || IsRootToken(nil) {
+		t.Fatal("non-root recognised as root")
 	}
 }
 
-func TestReservedPolicyName(t *testing.T) {
-	for _, n := range append([]string{"root", "default"}, PlatformPolicies...) {
-		if !ReservedPolicyName(n) {
-			t.Errorf("%s not reserved", n)
-		}
+func TestHelperTokenStoreAndErase(t *testing.T) {
+	home := t.TempDir()
+	if err := storeHelperToken(home, "", "hvs.test"); err != nil {
+		t.Fatal(err)
 	}
-	for _, n := range []string{"admin", "readonly", "operator2"} {
-		if ReservedPolicyName(n) {
-			t.Errorf("%s reserved", n)
-		}
+	got, err := helperToken(home, "")
+	if err != nil || got != "hvs.test" {
+		t.Fatalf("got %q, %v", got, err)
 	}
-	if err := (&PolicyWriteAction{Policy: "operator", HCL: "x"}).Check(); err == nil {
-		t.Fatal("platform policy accepted")
+	if err := eraseHelperToken(home, ""); err != nil {
+		t.Fatal(err)
 	}
-	if err := (&PolicyWriteAction{Policy: "admin", HCL: " "}).Check(); err == nil {
-		t.Fatal("empty policy accepted")
+	if got, _ := helperToken(home, ""); got != "" {
+		t.Fatalf("token survived erase: %q", got)
 	}
-}
-
-func TestRemintActionCheck(t *testing.T) {
-	if err := (RemintAction{Token: "operator"}).Check(); err == nil {
-		t.Fatal("operator accepted")
-	}
-	if err := (RemintAction{Token: "root"}).Check(); err == nil {
-		t.Fatal("root accepted")
-	}
-	for _, n := range []string{"provisioning", "apps-auth"} {
-		if err := (RemintAction{Token: n}).Check(); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-func TestExecActionEnv(t *testing.T) {
-	env := withoutVaultVars([]string{"HOME=/h", "VAULT_TOKEN=leak", "VAULT_ADDR=http://old", "VAULT_TLS_SERVER_NAME=old", "PATH=/bin"})
-	if strings.Join(env, " ") != "HOME=/h PATH=/bin" {
-		t.Fatalf("env = %v", env)
-	}
-	if err := (ExecAction{}).Run(&Client{}); err == nil {
-		t.Fatal("exec without a command accepted")
+	if err := eraseHelperToken(home, ""); err != nil {
+		t.Fatalf("erase twice: %v", err)
 	}
 }

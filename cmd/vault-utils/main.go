@@ -51,8 +51,9 @@ Commands:
   health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
   lifecycle                         ASG node: continue the launch hook once a caught-up voter; leave Raft before termination
   env --org --stack --env --block   Print shell settings for a Nullstone Vault cluster workspace
-  break-glass --reason <text> --second <name> [cluster flags] <action> [args]
-                                    Mint a root token, run one action, revoke it (see break-glass -h)
+  break-glass begin --reason <text> --second <name> [cluster flags]
+                                    Mint a root token into the vault CLI token store
+  break-glass end [cluster flags]   Revoke it
 
 Without VAULT_TOKEN, tenants, envs, snapshot take|restore, and health use the token from "vault login".
 On a shared cluster (SHARED_ENVS=true, printed by "vault-utils env") every tenant belongs to an env: --env is
