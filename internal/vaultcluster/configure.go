@@ -189,38 +189,64 @@ func (c *Client) mountDatabase() error {
 	return err
 }
 
-// AppsAuthRole is the auth/aws role the cluster function logs in with. It carries the apps-auth policy.
+// AppsAuthRole is the login role the cluster function uses on the declared auth mount. It carries the apps-auth policy.
 const AppsAuthRole = "apps-auth"
 
-// enableAppsAuth mounts auth/aws and binds the cluster function's execution role to the apps-auth policy.
-// The function holds no token of its own: it logs in per invoke and revokes the token when done.
-// Without AdminRoleARN (local stack) the mount and role are left alone.
+// adminAuthMethods are the auth methods a cluster module may declare for its function. The mount path equals
+// the method name, which is also what the function logs in on.
+var adminAuthMethods = map[string]struct {
+	description string
+	roleBody    func(principal string) map[string]any
+}{
+	"aws": {
+		description: "IAM logins: the cluster function and app brokers",
+		roleBody: func(principal string) map[string]any {
+			return map[string]any{"auth_type": "iam", "bound_iam_principal_arn": []string{principal}}
+		},
+	},
+	"gcp": {
+		description: "Service account logins: the cluster function and app brokers",
+		roleBody: func(principal string) map[string]any {
+			return map[string]any{"type": "iam", "bound_service_accounts": []string{principal}}
+		},
+	},
+}
+
+// enableAppsAuth mounts the auth method the cluster module declared (VAULT_ADMIN_AUTH_METHOD) and binds the
+// function's principal (VAULT_ADMIN_PRINCIPAL) to the apps-auth policy on it. The function holds no token of
+// its own: it logs in per invoke and revokes the token when done. Nothing declared, nothing mounted.
 func (c *Client) enableAppsAuth() error {
-	if c.Cfg.AdminRoleARN == "" {
-		log.Printf("VAULT_ADMIN_ROLE_ARN is not set; skipping the apps-auth login role")
+	method, principal := c.Cfg.AdminAuthMethod, c.Cfg.AdminPrincipal
+	if method == "" {
+		log.Printf("VAULT_ADMIN_AUTH_METHOD is not set; skipping the apps-auth login role")
 		return nil
+	}
+	m, ok := adminAuthMethods[method]
+	if !ok {
+		return fmt.Errorf("VAULT_ADMIN_AUTH_METHOD %q is not supported (aws, gcp)", method)
+	}
+	if principal == "" {
+		return fmt.Errorf("VAULT_ADMIN_PRINCIPAL is required with VAULT_ADMIN_AUTH_METHOD=%s", method)
 	}
 	auths, err := c.API.Sys().ListAuth()
 	if err != nil {
 		return err
 	}
-	if _, ok := auths["aws/"]; !ok {
-		if err := c.API.Sys().EnableAuthWithOptions("aws", &api.EnableAuthOptions{
-			Type:        "aws",
-			Description: "IAM logins: the cluster function and app brokers",
+	if _, ok := auths[method+"/"]; !ok {
+		if err := c.API.Sys().EnableAuthWithOptions(method, &api.EnableAuthOptions{
+			Type:        method,
+			Description: m.description,
 		}); err != nil {
-			return fmt.Errorf("enable auth/aws: %w", err)
+			return fmt.Errorf("enable auth/%s: %w", method, err)
 		}
 	}
-	if _, err := c.API.Logical().Write("auth/aws/role/"+AppsAuthRole, map[string]any{
-		"auth_type":               "iam",
-		"bound_iam_principal_arn": []string{c.Cfg.AdminRoleARN},
-		"token_policies":          []string{AppsAuthRole},
-		"token_ttl":               "5m",
-		"token_max_ttl":           "5m",
-	}); err != nil {
-		return fmt.Errorf("write auth/aws/role/%s: %w", AppsAuthRole, err)
+	body := m.roleBody(principal)
+	body["token_policies"] = []string{AppsAuthRole}
+	body["token_ttl"] = "5m"
+	body["token_max_ttl"] = "5m"
+	if _, err := c.API.Logical().Write("auth/"+method+"/role/"+AppsAuthRole, body); err != nil {
+		return fmt.Errorf("write auth/%s/role/%s: %w", method, AppsAuthRole, err)
 	}
-	log.Printf("bound %s to auth/aws/role/%s", c.Cfg.AdminRoleARN, AppsAuthRole)
+	log.Printf("bound %s to auth/%s/role/%s", principal, method, AppsAuthRole)
 	return nil
 }

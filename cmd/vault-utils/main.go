@@ -62,7 +62,8 @@ required there and refused elsewhere.
 
 Local key material: BOOTSTRAP_DIR (default .bootstrap).
 AWS: VAULT_INIT_SECRET_ARN, VAULT_PROVISIONING_SECRET_ARN, VAULT_OPERATOR_SECRET_ARN.
-VAULT_ADMIN_ROLE_ARN: the cluster function's IAM role; bootstrap and configure bind it to auth/aws/role/apps-auth.
+VAULT_ADMIN_AUTH_METHOD (aws|gcp) and VAULT_ADMIN_PRINCIPAL: the cluster function's login; bootstrap and configure
+mount the method and bind the principal to auth/<method>/role/apps-auth.
 Optional: SNAPSHOT_BUCKET, SNAPSHOT_PREFIX (default vault-snapshots).
 `)
 }

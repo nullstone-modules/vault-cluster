@@ -14,7 +14,8 @@ func TestConfigureBindsAppsAuthRole(t *testing.T) {
 	c.Cfg.AuthMount = "approle"
 	c.Cfg.DatabaseMount = "database"
 	c.Cfg.EnableAudit = false
-	c.Cfg.AdminRoleARN = "arn:aws:iam::123456789012:role/vault-apps-auth*"
+	c.Cfg.AdminAuthMethod = "aws"
+	c.Cfg.AdminPrincipal = "arn:aws:iam::123456789012:role/vault-apps-auth*"
 	for i := 0; i < 2; i++ {
 		if err := c.Configure(); err != nil {
 			t.Fatalf("configure run %d: %v", i+1, err)
@@ -33,7 +34,7 @@ func TestConfigureBindsAppsAuthRole(t *testing.T) {
 	}
 	bound, _ := role.Data["bound_iam_principal_arn"].([]any)
 	policies, _ := role.Data["token_policies"].([]any)
-	if len(bound) != 1 || bound[0] != c.Cfg.AdminRoleARN || len(policies) != 1 || policies[0] != "apps-auth" {
+	if len(bound) != 1 || bound[0] != c.Cfg.AdminPrincipal || len(policies) != 1 || policies[0] != "apps-auth" {
 		t.Fatalf("role = %v", role.Data)
 	}
 	if ttl, _ := role.Data["token_ttl"].(interface{ String() string }); ttl != nil && ttl.String() != "300" {
@@ -44,8 +45,8 @@ func TestConfigureBindsAppsAuthRole(t *testing.T) {
 	}
 }
 
-// Without the function's role ARN (local stack) Configure leaves auth/aws alone.
-func TestConfigureSkipsAppsAuthWithoutRoleARN(t *testing.T) {
+// Without a declared method (local stack) Configure mounts nothing.
+func TestConfigureSkipsAppsAuthWithoutMethod(t *testing.T) {
 	c := startVaultInmem(t)
 	c.Cfg.KVMount = "kv"
 	c.Cfg.TenantPrefix = "customers"
@@ -60,7 +61,7 @@ func TestConfigureSkipsAppsAuthWithoutRoleARN(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := auths["aws/"]; ok {
-		t.Fatal("auth/aws was mounted without VAULT_ADMIN_ROLE_ARN")
+		t.Fatal("auth/aws was mounted without VAULT_ADMIN_AUTH_METHOD")
 	}
 }
 
@@ -81,5 +82,21 @@ func TestAppsAuthPolicyDoesNotOwnMounts(t *testing.T) {
 				t.Fatalf("apps-auth (shared=%v) lost %s:\n%s", shared, want, hcl)
 			}
 		}
+	}
+}
+
+// A declared method the table does not know, or a method without a principal, is refused before any Vault call.
+func TestEnableAppsAuthRefusesBadDeclarations(t *testing.T) {
+	for _, cfg := range []Config{
+		{AdminAuthMethod: "azure", AdminPrincipal: "x"},
+		{AdminAuthMethod: "aws"},
+	} {
+		c := &Client{Cfg: cfg}
+		if err := c.enableAppsAuth(); err == nil {
+			t.Fatalf("%+v was accepted", cfg)
+		}
+	}
+	if body := adminAuthMethods["gcp"].roleBody("fn@proj.iam.gserviceaccount.com"); body["type"] != "iam" || body["bound_service_accounts"].([]string)[0] != "fn@proj.iam.gserviceaccount.com" {
+		t.Fatalf("gcp body = %v", body)
 	}
 }

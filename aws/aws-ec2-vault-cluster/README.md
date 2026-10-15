@@ -62,7 +62,7 @@ There is no per-person login. A human uses a platform token from Secrets Manager
 | Operator (`operator_secret_arn`) | Health, mounts, snapshots, start generate-root | Read tenant KV, restore |
 | Break-glass root | Restore, purge, read tenant data in an incident, re-mint `provisioning`, run `vault-utils configure`, write a human policy | Kept: `vault-utils break-glass begin --reason` mints it from operator plus the recovery shares (`init_secret_arn`) for the vault CLI; one action; `break-glass end` revokes it |
 
-The cluster function holds no token. It logs in through `auth/aws/role/apps-auth`, which bootstrap binds to the function's execution role (`VAULT_ADMIN_ROLE_ARN` in the node env); the 5-minute token writes app auth roles and, on a shared cluster, app entities, then is revoked. It cannot read tenant secrets.
+The cluster function holds no token. It logs in through `auth/aws/role/apps-auth`, which bootstrap binds to the function's execution role (`VAULT_ADMIN_AUTH_METHOD=aws` and `VAULT_ADMIN_PRINCIPAL` in the node env); the 5-minute token writes app auth roles and, on a shared cluster, app entities, then is revoked. It cannot read tenant secrets.
 
 Platform tokens are for automation and break-glass, not for people. Until bootstrap renews every token, `provisioning` expires 24 h after bootstrap; break-glass re-mints it.
 

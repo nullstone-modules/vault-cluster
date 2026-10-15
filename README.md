@@ -171,7 +171,7 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 | `go test ./local` | no | Compose runtime conformance (needs Docker) — repo root |
 | `vault-utils env --org <org> --stack <stack> --env <env> --block <block>` | no | Shell settings for a Nullstone Vault cluster — your machine |
 | `vault-utils break-glass begin --reason <text> ...` | yes (root) | Mint a root token for the vault CLI; `break-glass end` revokes it (see [Break-glass](#break-glass)) — your machine |
-| `vault-utils configure` | no | Re-apply mounts, policies, and the `apps-auth` login role on a bootstrapped cluster (root token; `VAULT_ADMIN_ROLE_ARN` for the function role) — your machine |
+| `vault-utils configure` | no | Re-apply mounts, policies, and the `apps-auth` login role on a bootstrapped cluster (root token; `VAULT_ADMIN_AUTH_METHOD` and `VAULT_ADMIN_PRINCIPAL` from the node env) — your machine |
 
 ## Tenant isolation
 
@@ -482,7 +482,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 | Permission denied on tenant create | Use the provisioning token, not operator |
 | generate-root permission denied | Vault 2.0 needs the operator token. See [Break-glass](#break-glass). |
 | provisioning token expired | `break-glass begin`, re-mint it with `vault token create`, `break-glass end`. See [Break-glass](#break-glass). |
-| `aws-vault-access` apply fails with 403 or "auth/aws not enabled" | The cluster predates the IAM login for the function. `break-glass begin`, then `vault-utils configure` with `VAULT_ADMIN_ROLE_ARN` set to the function role (node env, or the cluster workspace), then `break-glass end`. |
+| `aws-vault-access` apply fails with 403 or "auth/aws not enabled" | The cluster predates the IAM login for the function. `break-glass begin`, then `vault-utils configure` with `VAULT_ADMIN_AUTH_METHOD=aws` and `VAULT_ADMIN_PRINCIPAL` set to the function role (both in the node env), then `break-glass end`. |
 | Permission denied on tenant secrets | Expected for provisioning |
 | Everything denied | Audit volume full or unwritable |
 
