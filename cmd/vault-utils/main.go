@@ -51,6 +51,9 @@ Commands:
   health serve                      HTTP on :8210 (200 only if this node is a Raft voter and caught up)
   lifecycle                         ASG node: continue the launch hook once a caught-up voter; leave Raft before termination
   env --org --stack --env --block   Print shell settings for a Nullstone Vault cluster workspace
+  break-glass begin --reason <text> [cluster flags]
+                                    Mint a root token into the vault CLI token store
+  break-glass end [cluster flags]   Revoke it
 
 Without VAULT_TOKEN, tenants, envs, snapshot take|restore, and health use the token from "vault login".
 On a shared cluster (SHARED_ENVS=true, printed by "vault-utils env") every tenant belongs to an env: --env is
@@ -65,6 +68,9 @@ Optional: SNAPSHOT_BUCKET, SNAPSHOT_PREFIX (default vault-snapshots).
 func run(cmd string, args []string) error {
 	if cmd == "env" {
 		return runEnv(args)
+	}
+	if cmd == "break-glass" {
+		return runBreakGlass(args)
 	}
 	cfg := vaultcluster.ConfigFromEnv()
 	if cfg.Token == "" && usesLoginToken(cmd, args) {

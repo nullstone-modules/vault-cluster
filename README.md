@@ -93,7 +93,7 @@ vault-cluster/
 
 ## Prerequisites
 
-Docker Desktop (Compose v2). Go 1.26 for `go test`. `curl` and `jq` for the manual examples below; Vault CLI is optional except break-glass decode.
+Docker Desktop (Compose v2). Go 1.26 for `go test`. `curl` and `jq` for the manual examples below; Vault CLI for the action taken under break-glass.
 
 Images are pinned by tag and digest in `local/compose.yml` (Vault 2.0, PostgreSQL 18-alpine). Never `latest`.
 
@@ -170,6 +170,7 @@ Run from `local/` unless noted. Destructive commands require `--yes`.
 | `go test ./internal/vaultcluster` | no | Isolation and credentials (needs Docker) — repo root |
 | `go test ./local` | no | Compose runtime conformance (needs Docker) — repo root |
 | `vault-utils env --org <org> --stack <stack> --env <env> --block <block>` | no | Shell settings for a Nullstone Vault cluster — your machine |
+| `vault-utils break-glass begin --reason <text> ...` | yes (root) | Mint a root token for the vault CLI; `break-glass end` revokes it (see [Break-glass](#break-glass)) — your machine |
 
 ## Tenant isolation
 
@@ -357,9 +358,34 @@ The Raft volume cannot be unsealed. Data is gone. That is Shamir working. Restor
 
 ## Break-glass
 
-Use only when no routine identity can do the job (read tenant data in an incident, purge secrets, repair audit, restore). Two people. Record why first.
+Use only when no routine identity can do the job: re-mint an expired platform token, write a human policy, read tenant data in an incident, purge, restore. Record why first.
 
-Vault 2.0 requires a token on `sys/generate-root`. Use the operator token. Recovery keys are still required. The operator token cannot restore; the new root can.
+`vault-utils break-glass begin` mints a root token from the operator token and the stored recovery (or unseal) shares and saves it where `vault login` would (the configured `token_helper`, else `~/.vault-token`). The `vault` CLI then uses it. Do the one recorded action, then `vault-utils break-glass end` revokes it. Nobody copies a token or pastes a share.
+
+```bash
+vault-utils break-glass begin --reason <text> [cluster flags]
+vault <one recorded action>
+vault-utils break-glass end [cluster flags]
+```
+
+`--reason` is required and logged with a timestamp. Cluster flags are the ones `env` takes (`--org --stack --env --block [--profile] [--internal]`); without them the command uses `VAULT_ADDR` plus `VAULT_INIT_SECRET_ARN`, `VAULT_OPERATOR_SECRET_ARN`, `VAULT_PROVISIONING_SECRET_ARN` (an AWS node), or `BOOTSTRAP_DIR` (the local stack). `VAULT_TOKEN` is ignored by both subcommands; unset it so the CLI picks up the saved root. Secrets Manager is called in each ARN's region. A cluster applied before `init_secret_arn` existed is found by name (`<block>/vault/init/`).
+
+```bash
+vault-utils break-glass begin --reason "provisioning token expired" --org acme --stack core --env prod --block vault
+vault token create -orphan -policy=provisioning -period=24h -display-name=provisioning -field=token | aws secretsmanager put-secret-value --secret-id <provisioning_secret_arn> --secret-string file:///dev/stdin
+vault-utils break-glass end --org acme --stack core --env prod --block vault
+```
+
+Printed: the nonce, `required`, `progress`, and the revocation. Never printed: the operator token, the shares, the OTP, the encoded token, the root token. A failed `begin` cancels its attempt; an attempt left over from an earlier run is cancelled first and said so. `begin` refuses to run while a root is already saved; `end` refuses to revoke anything but a root token.
+
+The platform tokens (`provisioning`, `operator`, `apps-auth`) are for automation and break-glass, not for people. Until bootstrap renews every token, `provisioning` and `apps-auth` expire 24 h after bootstrap; re-minting them as above is the recovery.
+
+Pitfalls with the root in hand: `vault login` prints the token unless `-no-print`; `vault token lookup` prints the token `id`; `vault write ... password=-` stores a trailing newline when the shell adds one; Windows PowerShell 5.1 prefixes a UTF-8 BOM when piping to native commands.
+
+<details>
+<summary>Manual flow (fallback when vault-utils is unavailable)</summary>
+
+Vault 2.0 requires a token on `sys/generate-root`. Use the operator token. Recovery keys are still required.
 
 ```bash
 export VAULT_ADDR=http://127.0.0.1:8200
@@ -378,7 +404,11 @@ Cancel an in-flight attempt:
 VAULT_TOKEN=<operator> vault operator generate-root -cancel
 ```
 
+Delete `~/.vault-token` afterwards rather than revoking the operator token, which the nodes use.
+
 Clusters that applied the operator policy before this change will still get 403. Do not leave `enable_unauthenticated_access` on. One-shot: add `enable_unauthenticated_access = ["generate-root"]` to `vault.hcl`, SIGHUP, generate-root, write the current operator policy with the new root, remove that line, SIGHUP, revoke the root.
+
+</details>
 
 ## Testing
 
@@ -450,6 +480,7 @@ On boot, `vault-configure.service` runs after cloud-init, writes `/etc/vault.d/c
 | Health 503 | Vault is sealed. Run `docker compose run --rm bootstrap` in `local/` |
 | Permission denied on tenant create | Use the provisioning token, not operator |
 | generate-root permission denied | Vault 2.0 needs the operator token. See [Break-glass](#break-glass). |
+| provisioning or apps-auth token expired | `break-glass begin`, re-mint it with `vault token create`, `break-glass end`. See [Break-glass](#break-glass). |
 | Permission denied on tenant secrets | Expected for provisioning |
 | Everything denied | Audit volume full or unwritable |
 

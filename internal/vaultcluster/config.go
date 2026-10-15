@@ -8,8 +8,10 @@ import (
 )
 
 type Config struct {
-	Addr          string
-	Token         string
+	Addr  string
+	Token string
+	// TLSServerName verifies the load balancer certificate when Addr is a private name (vault.internal).
+	TLSServerName string
 	KVMount       string
 	TenantPrefix  string
 	AuthMount     string
@@ -37,6 +39,7 @@ func ConfigFromEnv() Config {
 	c := Config{
 		Addr:          getenv("VAULT_ADDR", ""),
 		Token:         getenv("VAULT_TOKEN", ""),
+		TLSServerName: getenv("VAULT_TLS_SERVER_NAME", ""),
 		KVMount:       getenv("KV_MOUNT", "kv"),
 		TenantPrefix:  getenv("TENANT_PREFIX", "customers"),
 		AuthMount:     getenv("AUTH_MOUNT", "approle"),

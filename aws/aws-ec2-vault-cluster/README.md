@@ -60,9 +60,11 @@ There is no per-person login. A human uses a platform token from Secrets Manager
 |---|---|---|
 | Provisioning (`provisioning_secret_arn`) | `tenants create / list / destroy`, `envs list / destroy`; on a shared cluster also the tenant entities. Mint any tenant's login. | Read tenant KV with its own token, write policies, give an entity policies, touch groups or OIDC |
 | Operator (`operator_secret_arn`) | Health, mounts, snapshots, start generate-root | Read tenant KV, restore |
-| Break-glass root | Restore, purge, read tenant data in an incident | Kept: minted from operator plus recovery keys, two people, revoked after one action |
+| Break-glass root | Restore, purge, read tenant data in an incident, re-mint `provisioning` or `apps-auth`, write a human policy | Kept: `vault-utils break-glass begin --reason` mints it from operator plus the recovery shares (`init_secret_arn`) for the vault CLI; one action; `break-glass end` revokes it |
 
-The function's `apps-auth` token writes app auth roles and, on a shared cluster, app entities. It cannot read tenant secrets.
+The function's `apps-auth` token (`apps_auth_secret_arn`) writes app auth roles and, on a shared cluster, app entities. It cannot read tenant secrets.
+
+Platform tokens are for automation and break-glass, not for people. Until bootstrap renews every token, `provisioning` and `apps-auth` expire 24 h after bootstrap; break-glass re-mints them.
 
 Per-tenant CLI on a shared cluster takes `--env`; on an unshared one `--env` is refused.
 
@@ -76,7 +78,7 @@ The ASG health check stays `EC2`. An `ELB` check would replace a one-node cluste
 
 ## Outputs
 
-`vault_addr`, `user_vault_addr`, `tls_server_name`, `vault_fqdn`, `user_fqdn`, `vault_api_port`, `nlb_security_group_id`, `admin_function_name`, `shared`, `operator_secret_arn`, `provisioning_secret_arn`, `db_hostname`, `db_port`, `db_endpoint`, `private_urls`, `public_urls`, plus node identifiers (`role_name`, `instance_profile_name`, `security_group_id`, `autoscaling_group_name`, `ami_id`).
+`vault_addr`, `user_vault_addr`, `tls_server_name`, `vault_fqdn`, `user_fqdn`, `vault_api_port`, `nlb_security_group_id`, `admin_function_name`, `shared`, `operator_secret_arn`, `provisioning_secret_arn`, `init_secret_arn`, `apps_auth_secret_arn`, `db_hostname`, `db_port`, `db_endpoint`, `private_urls`, `public_urls`, plus node identifiers (`role_name`, `instance_profile_name`, `security_group_id`, `autoscaling_group_name`, `ami_id`).
 
 ## Testing
 
