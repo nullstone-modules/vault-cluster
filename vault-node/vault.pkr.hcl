@@ -50,9 +50,11 @@ source "amazon-ebs" "vault" {
   subnet_id                   = var.subnet_id
   associate_public_ip_address = true
 
+  # The name must not match al2023-ami-minimal-*: the minimal image has a 2 GiB root, and the Vault binary
+  # does not fit. Which of the two is most_recent depends on release timing.
   source_ami_filter {
     filters = {
-      name                = "al2023-ami-*-kernel-6.1-x86_64"
+      name                = "al2023-ami-2023*-kernel-6.1-x86_64"
       architecture        = "x86_64"
       root-device-type    = "ebs"
       virtualization-type = "hvm"
