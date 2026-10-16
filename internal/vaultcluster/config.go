@@ -32,7 +32,12 @@ type Config struct {
 	DatabaseMaxTTL    string
 	TokenTTL          string
 	TokenMaxTTL       string
-	HTTPTimeout       time.Duration
+	// AdminAuthMethod is the auth method the cluster module declares for its function (aws, gcp), mounted at
+	// auth/<method>. AdminPrincipal is the function's identity on it (IAM role ARN, service account email).
+	// Both empty on the local stack: no mount, no role.
+	AdminAuthMethod string
+	AdminPrincipal  string
+	HTTPTimeout     time.Duration
 }
 
 func ConfigFromEnv() Config {
@@ -55,9 +60,11 @@ func ConfigFromEnv() Config {
 		// programmatically. DatabaseMount stays because the tenant and
 		// platform policies reference its paths even when the engine is
 		// not mounted.
-		TokenTTL:    getenv("DEFAULT_TOKEN_TTL", "15m"),
-		TokenMaxTTL: getenv("MAX_TOKEN_TTL", "15m"),
-		HTTPTimeout: 15 * time.Second,
+		TokenTTL:        getenv("DEFAULT_TOKEN_TTL", "15m"),
+		TokenMaxTTL:     getenv("MAX_TOKEN_TTL", "15m"),
+		AdminAuthMethod: getenv("VAULT_ADMIN_AUTH_METHOD", ""),
+		AdminPrincipal:  getenv("VAULT_ADMIN_PRINCIPAL", ""),
+		HTTPTimeout:     15 * time.Second,
 	}
 	return c
 }

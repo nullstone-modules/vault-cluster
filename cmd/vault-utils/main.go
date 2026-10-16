@@ -37,6 +37,7 @@ func usage() {
 
 Commands:
   bootstrap local|aws|azure|gcp     Init once, unseal, configure
+  configure                         Re-apply mounts, policies, and the apps-auth login role (root token)
   tenants create <id> [--env <env>]
   tenants list [--env <env>]
   tenants destroy <id> [--env <env>] --yes [--purge-secrets]
@@ -61,6 +62,8 @@ required there and refused elsewhere.
 
 Local key material: BOOTSTRAP_DIR (default .bootstrap).
 AWS: VAULT_INIT_SECRET_ARN, VAULT_PROVISIONING_SECRET_ARN, VAULT_OPERATOR_SECRET_ARN.
+VAULT_ADMIN_AUTH_METHOD (aws|gcp) and VAULT_ADMIN_PRINCIPAL: the cluster function's login; bootstrap and configure
+mount the method and bind the principal to auth/<method>/role/apps-auth.
 Optional: SNAPSHOT_BUCKET, SNAPSHOT_PREFIX (default vault-snapshots).
 `)
 }
@@ -87,6 +90,8 @@ func run(cmd string, args []string) error {
 	switch cmd {
 	case "bootstrap":
 		return runBootstrap(c, args)
+	case "configure":
+		return c.Configure()
 	case "tenants":
 		return runTenants(c, args)
 	case "envs":
@@ -446,7 +451,7 @@ func usesLoginToken(cmd string, args []string) bool {
 		sub = args[0]
 	}
 	switch cmd {
-	case "tenants", "envs":
+	case "tenants", "envs", "configure":
 		return true
 	case "snapshot":
 		return sub == "take" || sub == "restore"
@@ -485,16 +490,11 @@ func fileKeyStore() vaultcluster.FileKeyStore {
 }
 
 func awsKeyStore() (*secretsmanager.KeyStore, error) {
-	store, err := secretsmanager.New(
+	return secretsmanager.New(
 		os.Getenv("VAULT_INIT_SECRET_ARN"),
 		os.Getenv("VAULT_PROVISIONING_SECRET_ARN"),
 		os.Getenv("VAULT_OPERATOR_SECRET_ARN"),
 	)
-	if err != nil {
-		return nil, err
-	}
-	store.AppsAuthARN = os.Getenv("VAULT_APPS_AUTH_SECRET_ARN")
-	return store, nil
 }
 
 func awsClaimInit() (bool, error) {

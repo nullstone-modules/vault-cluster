@@ -1,14 +1,7 @@
-# Writes app auth roles through the cluster function, on the aws and gcp mounts. Cannot read tenant secrets.
+# Held by the cluster function through auth/aws/role/apps-auth. Writes app auth roles on the aws and gcp mounts,
+# which bootstrap owns; reads sys/auth only for a mount accessor. Cannot read tenant secrets.
 path "sys/auth" {
   capabilities = ["read"]
-}
-
-path "sys/auth/aws" {
-  capabilities = ["create", "read", "update", "sudo"]
-}
-
-path "sys/auth/gcp" {
-  capabilities = ["create", "read", "update", "sudo"]
 }
 
 path "auth/aws/role" {
