@@ -32,10 +32,6 @@ path "kv/*" {
   capabilities = ["deny"]
 }
 
-path "database/creds/*" {
-  capabilities = ["deny"]
-}
-
 # Shared cluster: the function writes one entity per app role (metadata env) and its alias, so the broker
 # policies can scope the app to its env. policies and disabled are refused.
 path "identity/entity" {

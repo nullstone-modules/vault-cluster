@@ -50,9 +50,6 @@ func (c *Client) RunBootstrap(store KeyStore, opts BootstrapOptions) error {
 		c.API.SetToken(tok)
 		if _, err := c.API.Auth().Token().LookupSelf(); err == nil {
 			c.Cfg.Token = tok
-			if err := c.enableCredentialsIfNeeded(store); err != nil {
-				return err
-			}
 			log.Printf("platform already bootstrapped")
 			return nil
 		}
@@ -180,9 +177,6 @@ func (c *Client) waitPeerBootstrap(store KeyStore, timeout time.Duration) error 
 			c.API.SetToken(tok)
 			if _, err := c.API.Auth().Token().LookupSelf(); err == nil {
 				c.Cfg.Token = tok
-				if err := c.enableCredentialsIfNeeded(store); err != nil {
-					return err
-				}
 				log.Printf("platform already bootstrapped")
 				return nil
 			}
@@ -285,30 +279,6 @@ func (c *Client) unseal(store KeyStore, threshold int) error {
 		time.Sleep(2 * time.Second)
 	}
 	return fmt.Errorf("Vault remained sealed")
-}
-
-func (c *Client) enableCredentialsIfNeeded(store KeyStore) error {
-	if !c.Cfg.EnableCredentials || c.databaseMounted() {
-		return nil
-	}
-	tok, err := store.LoadToken("operator")
-	if err != nil {
-		return fmt.Errorf("database engine is not mounted and the operator token is missing")
-	}
-	if err := c.WithToken(tok).mountDatabase(); err != nil {
-		return fmt.Errorf("enable database engine: %w", err)
-	}
-	log.Printf("enabled database engine")
-	return nil
-}
-
-func (c *Client) databaseMounted() bool {
-	mounts, err := c.API.Sys().ListMounts()
-	if err != nil {
-		return false
-	}
-	_, ok := mounts[c.Cfg.DatabaseMount+"/"]
-	return ok
 }
 
 func (c *Client) issueOrphanToken(policy string) (string, error) {

@@ -20,7 +20,7 @@ jobs:
         with:
           go-version: "1.26.x"
 
-      - name: Isolation and credentials
+      - name: Isolation
         run: go test ./internal/vaultcluster -count=1 -timeout 15m
 
   stack:

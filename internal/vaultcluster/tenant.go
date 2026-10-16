@@ -16,9 +16,8 @@ const (
 	tenantSecretIDUses = 1
 )
 
-// CreateTenant writes the tenant's reader and writer AppRole roles and, with credentials enabled, its
-// database roles. Tenant policies are static, so nothing here writes a policy. No credentials are issued:
-// apps mint their own at login.
+// CreateTenant writes the tenant's reader and writer AppRole roles. Tenant policies are static, so nothing here
+// writes a policy. No credentials are issued: apps mint their own at login.
 //
 // env is empty on an unshared cluster. On a shared cluster it is required: the roles are named env.tenant
 // and each gets an entity carrying env and tenant as metadata, which the tenant policies template.
@@ -33,11 +32,7 @@ func (c *Client) CreateTenant(env, tenantID string) error {
 	if err := c.writeAppRole("reader", role, []string{c.Cfg.TenantPolicy("reader")}); err != nil {
 		return err
 	}
-	writerPolicies := []string{c.Cfg.TenantPolicy("writer")}
-	if c.Cfg.EnableCredentials {
-		writerPolicies = append(writerPolicies, c.Cfg.TenantPolicy("database"))
-	}
-	if err := c.writeAppRole("writer", role, writerPolicies); err != nil {
+	if err := c.writeAppRole("writer", role, []string{c.Cfg.TenantPolicy("writer")}); err != nil {
 		return err
 	}
 	if c.Cfg.SharedEnvs {
@@ -45,15 +40,6 @@ func (c *Client) CreateTenant(env, tenantID string) error {
 			if err := c.bindTenantEntity(kind, env, tenantID); err != nil {
 				return err
 			}
-		}
-	}
-
-	if c.Cfg.EnableCredentials {
-		if err := c.writeDBRole(role, "readonly", "app_readonly"); err != nil {
-			return err
-		}
-		if err := c.writeDBRole(role, "readwrite", "app_readwrite"); err != nil {
-			return err
 		}
 	}
 
@@ -165,36 +151,6 @@ func aliasList(v any) []map[string]any {
 	return out
 }
 
-// dbCreationStatements are the only statements a tenant database role may run. The provisioning
-// policy pins creation_statements to these values, so a role cannot grant more than the app groups.
-func dbCreationStatements() []string {
-	return []string{
-		`CREATE ROLE "{{name}}" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';`,
-		`GRANT app_readonly TO "{{name}}";`,
-		`GRANT app_readwrite TO "{{name}}";`,
-	}
-}
-
-func (c *Client) writeDBRole(tenantRole, suffix, group string) error {
-	role := fmt.Sprintf("tenant-%s-%s", tenantRole, suffix)
-	stmts := dbCreationStatements()
-	grant := fmt.Sprintf(`GRANT %s TO "{{name}}";`, group)
-	found := false
-	for _, s := range stmts[1:] {
-		found = found || s == grant
-	}
-	if !found {
-		return fmt.Errorf("unknown database group %q", group)
-	}
-	_, err := c.API.Logical().Write(c.Cfg.DatabaseMount+"/roles/"+role, map[string]any{
-		"db_name":             c.Cfg.DatabaseConnName,
-		"creation_statements": []string{stmts[0], grant},
-		"default_ttl":         c.Cfg.DatabaseTTL,
-		"max_ttl":             c.Cfg.DatabaseMaxTTL,
-	})
-	return err
-}
-
 // LoginAppRole logs in to role on an AppRole mount with a fresh secret ID, as an app does for one tenant.
 func (c *Client) LoginAppRole(mount, role string) (string, error) {
 	path := "auth/" + mount + "/role/" + role
@@ -238,15 +194,6 @@ func (c *Client) OffboardTenant(env, tenantID string, purge bool) error {
 		}
 		if err := c.deleteMissingOK("auth/" + c.Cfg.TenantMount(kind) + "/role/" + role); err != nil {
 			return fmt.Errorf("delete %s role %s: %w", kind, role, err)
-		}
-	}
-	if c.Cfg.EnableCredentials {
-		for _, suffix := range []string{"readonly", "readwrite"} {
-			dbRole := fmt.Sprintf("tenant-%s-%s", role, suffix)
-			_ = c.API.Sys().RevokePrefix(c.Cfg.DatabaseMount + "/creds/" + dbRole)
-			if err := c.deleteMissingOK(c.Cfg.DatabaseMount + "/roles/" + dbRole); err != nil {
-				return fmt.Errorf("delete database role %s: %w", dbRole, err)
-			}
 		}
 	}
 	if purge {

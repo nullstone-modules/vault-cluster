@@ -20,7 +20,7 @@ Capability that connects an app to `nullstone/aws-ec2-vault-cluster`. It opens t
 
 | Name | Default | Purpose |
 |---|---|---|
-| `access` | `reader` | `reader`: read tenant KV. `writer`: full KV lifecycle plus dynamic database credentials. |
+| `access` | `reader` | `reader`: read tenant KV. `writer`: full KV lifecycle. |
 | `role_name` | empty | Vault auth role name. Empty gives `<app>-<suffix>`, unique per workspace. Leave it empty on a shared cluster: a fixed name collides across preview envs and the function refuses the second binding. |
 
 ## Gaining access from the app
@@ -51,7 +51,6 @@ PREFIX="${VAULT_ENV:+envs/$VAULT_ENV/}customers/$TENANT"
 VAULT_TOKEN=$TENANT_TOKEN vault kv get -mount=kv "$PREFIX/app-config"
 # writer only:
 VAULT_TOKEN=$TENANT_TOKEN vault kv put -mount=kv "$PREFIX/app-config" api_key=...
-VAULT_TOKEN=$TENANT_TOKEN vault read "database/creds/tenant-$ROLE-readwrite"
 ```
 
 ## Token lifetimes
@@ -61,7 +60,6 @@ VAULT_TOKEN=$TENANT_TOKEN vault read "database/creds/tenant-$ROLE-readwrite"
 | Broker (from the IAM login) | Vault default, 32 days unless the mount is tuned | Yes | Cache it for the process. Renew with `auth/token/renew-self` before expiry, or log in again. Treat a 403 on `role-id` or `secret-id` as expired and log in again. |
 | Secret ID | 60 seconds, one use | No | Mint right before login. Never cache or share it. |
 | Tenant token | 15 minutes, hard maximum | Renew keeps it under 15 minutes total | Cache per tenant for up to 15 minutes if you like, then log in again. Never hold one past a request on behalf of a different tenant. |
-| Database credentials (writer) | Lease from the cluster (`DatabaseTTL`) | Yes, up to the max | Renew with `sys/leases/renew` while in use; revoke with `sys/leases/revoke` when done. They outlive the tenant token that issued them until their lease ends. |
 
 ## Gotchas
 

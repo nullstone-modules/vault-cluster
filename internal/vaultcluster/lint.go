@@ -126,9 +126,6 @@ func LintPolicy(policyName, src string, cfg Config) []Finding {
 				add(fmt.Sprintf("path %q grants [%s] over the entire KV mount", p.path, p.caps))
 			}
 		}
-		if p.path == cfg.DatabaseMount+"/creds/*" && p.caps != "deny" {
-			add(fmt.Sprintf("path %q grants [%s] on every tenant's database credentials", p.path, p.caps))
-		}
 		if _, ok := seen[p.path]; ok {
 			add(fmt.Sprintf("path %q is declared more than once", p.path))
 		}

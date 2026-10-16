@@ -33,10 +33,6 @@ path "{{.KVMount}}/*" {
   capabilities = ["deny"]
 }
 
-path "{{.DatabaseMount}}/*" {
-  capabilities = ["deny"]
-}
-
 path "sys/*" {
   capabilities = ["deny"]
 }

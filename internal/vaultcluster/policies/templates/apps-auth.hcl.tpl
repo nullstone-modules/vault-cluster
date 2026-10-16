@@ -31,10 +31,6 @@ path "auth/token/renew-self" {
 path "{{.KVMount}}/*" {
   capabilities = ["deny"]
 }
-
-path "{{.DatabaseMount}}/creds/*" {
-  capabilities = ["deny"]
-}
 {{- if .Shared}}
 
 # Shared cluster: the function writes one entity per app role (metadata env) and its alias, so the broker

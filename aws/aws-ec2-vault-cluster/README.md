@@ -27,16 +27,16 @@ Launched in the stack's shared previews env (Nullstone env type `PreviewsSharedE
 
 ## Where a tenant's secrets live
 
-| Cluster | KV path | AppRole role name | Database roles |
-|---|---|---|---|
-| Unshared | `kv/data/customers/{tenant}/*` | `{tenant}` | `tenant-{tenant}-readonly`, `-readwrite` |
-| Shared | `kv/data/envs/{env}/customers/{tenant}/*` | `{env}.{tenant}` | `tenant-{env}.{tenant}-readonly`, `-readwrite` |
+| Cluster | KV path | AppRole role name |
+|---|---|---|
+| Unshared | `kv/data/customers/{tenant}/*` | `{tenant}` |
+| Shared | `kv/data/envs/{env}/customers/{tenant}/*` | `{env}.{tenant}` |
 
 KV v2: `metadata/`, `delete/`, `undelete/`, and `destroy/` mirror the `data/` tree. Tenant IDs and env names match `^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$`; neither contains `.`, so the role name splits unambiguously.
 
 ## How a tenant token is scoped
 
-The tenant policies (`tenant-reader`, `tenant-writer`, `tenant-database`) are static, written once at bootstrap, and never name a tenant. A Vault ACL template fills the tenant in from the identity of the token that logged in:
+The tenant policies (`tenant-reader`, `tenant-writer`) are static, written once at bootstrap, and never name a tenant. A Vault ACL template fills the tenant in from the identity of the token that logged in:
 
 - Unshared: the AppRole role name (`{{identity.entity.aliases.<accessor>.metadata.role_name}}`), which only provisioning can set.
 - Shared: entity metadata `env` and `tenant` (`{{identity.entity.metadata.env}}`), written by provisioning when it creates the tenant's roles and aliased on each role's `role_id`.

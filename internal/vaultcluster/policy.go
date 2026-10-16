@@ -2,7 +2,6 @@ package vaultcluster
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"text/template"
 
@@ -36,37 +35,29 @@ func RenderPolicy(templateName string, cfg Config, acc TenantAccessors) (string,
 	if strings.HasPrefix(templateName, "tenant-") && (acc.Reader == "" || acc.Writer == "") {
 		return "", fmt.Errorf("render template %q: tenant mount accessors are required", templateName)
 	}
-	var stmts []string
-	for _, s := range dbCreationStatements() {
-		stmts = append(stmts, strconv.Quote(s))
-	}
 	data := struct {
-		Shared        bool
-		KVMount       string
-		TenantPrefix  string
-		EnvPrefix     string
-		DatabaseMount string
-		ReaderMount   string
-		WriterMount   string
+		Shared       bool
+		KVMount      string
+		TenantPrefix string
+		EnvPrefix    string
+		ReaderMount  string
+		WriterMount  string
 		// ReaderTenant / WriterTenant name the caller's tenant. Unshared: the role_name alias on that mount.
 		// Shared: env and tenant from entity metadata, as one path segment pair.
 		ReaderTenant string
 		WriterTenant string
 		// Env is the caller's env from entity metadata (shared only).
-		Env                  string
-		DBCreationStatements string
+		Env string
 	}{
-		Shared:               cfg.SharedEnvs,
-		KVMount:              cfg.KVMount,
-		TenantPrefix:         cfg.TenantPrefix,
-		EnvPrefix:            cfg.EnvPrefix,
-		DatabaseMount:        cfg.DatabaseMount,
-		ReaderMount:          cfg.TenantMount("reader"),
-		WriterMount:          cfg.TenantMount("writer"),
-		ReaderTenant:         roleNameTemplate(acc.Reader),
-		WriterTenant:         roleNameTemplate(acc.Writer),
-		Env:                  entityMetaTemplate(entityMetaEnv),
-		DBCreationStatements: strings.Join(stmts, ", "),
+		Shared:       cfg.SharedEnvs,
+		KVMount:      cfg.KVMount,
+		TenantPrefix: cfg.TenantPrefix,
+		EnvPrefix:    cfg.EnvPrefix,
+		ReaderMount:  cfg.TenantMount("reader"),
+		WriterMount:  cfg.TenantMount("writer"),
+		ReaderTenant: roleNameTemplate(acc.Reader),
+		WriterTenant: roleNameTemplate(acc.Writer),
+		Env:          entityMetaTemplate(entityMetaEnv),
 	}
 	if cfg.SharedEnvs {
 		data.ReaderTenant = entityMetaTemplate(entityMetaTenant)

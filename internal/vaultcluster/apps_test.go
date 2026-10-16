@@ -15,7 +15,6 @@ func TestAppsBrokerTokens(t *testing.T) {
 	c.Cfg.KVMount = "kv"
 	c.Cfg.TenantPrefix = "customers"
 	c.Cfg.AuthMount = "approle"
-	c.Cfg.DatabaseMount = "database"
 	c.Cfg.EnableAudit = false
 	c.Cfg.TokenTTL = "15m"
 	c.Cfg.TokenMaxTTL = "15m"
@@ -112,7 +111,6 @@ func TestAppsBrokerTokens(t *testing.T) {
 	deny(reader, "GET", "sys/policies/acl/tenant-reader", nil)
 	deny(writer, "GET", "auth/"+readerMount+"/role/tenant-a/role-id", nil)
 	deny(writer, "GET", c.Cfg.KVDataPath("", "tenant-a", "fixture"), nil)
-	deny(writer, "GET", c.Cfg.DatabaseMount+"/creds/tenant-tenant-a-readonly", nil)
 
 	// Unknown tenants have no role, so there is nothing to log in as.
 	if got := status(reader, "GET", "auth/"+readerMount+"/role/tenant-c/role-id", nil); got != 404 {
@@ -144,7 +142,6 @@ func TestListTenants(t *testing.T) {
 	c.Cfg.KVMount = "kv"
 	c.Cfg.TenantPrefix = "customers"
 	c.Cfg.AuthMount = "approle"
-	c.Cfg.DatabaseMount = "database"
 	c.Cfg.EnableAudit = false
 	if err := c.Configure(); err != nil {
 		t.Fatal(err)

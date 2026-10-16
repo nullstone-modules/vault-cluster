@@ -3,13 +3,12 @@ package vaultcluster
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
 
 func TestLintFixtures(t *testing.T) {
-	cfg := Config{KVMount: "kv", TenantPrefix: "customers", EnvPrefix: "envs", DatabaseMount: "database", AuthMount: "approle"}
+	cfg := Config{KVMount: "kv", TenantPrefix: "customers", EnvPrefix: "envs", AuthMount: "approle"}
 	root := filepath.Join("testdata", "lint")
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -36,7 +35,7 @@ func TestLintFixtures(t *testing.T) {
 }
 
 func TestRenderAndLintPlatformPolicies(t *testing.T) {
-	cfg := Config{KVMount: "kv", TenantPrefix: "customers", EnvPrefix: "envs", DatabaseMount: "database", AuthMount: "approle"}
+	cfg := Config{KVMount: "kv", TenantPrefix: "customers", EnvPrefix: "envs", AuthMount: "approle"}
 	acc := TenantAccessors{Reader: "auth_approle_1a2b3c4d", Writer: "auth_approle_5e6f7a8b"}
 	for _, name := range []string{"provisioning", "operator", "apps-auth", "apps-reader", "apps-writer"} {
 		hcl, err := RenderPolicy(name, cfg, acc)
@@ -55,7 +54,7 @@ func TestRenderAndLintPlatformPolicies(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"tenant-reader", "tenant-writer", "tenant-database"} {
+	for _, name := range []string{"tenant-reader", "tenant-writer"} {
 		hcl, err := RenderPolicy(name, cfg, acc)
 		if err != nil {
 			t.Fatal(err)
@@ -81,10 +80,5 @@ func TestRenderAndLintPlatformPolicies(t *testing.T) {
 	}
 	if strings.Contains(prov, "sys/policies/acl/tenant") {
 		t.Fatal("provisioning must not write policies")
-	}
-	for _, s := range dbCreationStatements() {
-		if !strings.Contains(prov, strconv.Quote(s)) {
-			t.Fatalf("provisioning must pin creation statement %q", s)
-		}
 	}
 }

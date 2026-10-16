@@ -1,6 +1,6 @@
-# Onboard/offboard tenants. Writes AppRole and database roles only; tenant policies are static (bootstrap).
-# allowed_parameters pins every role to the tenant policies and fixed SQL, so nothing written here
-# can carry a platform policy. Can mint any tenant's credentials; cannot read tenant secrets itself.
+# Onboard/offboard tenants. Writes AppRole roles only; tenant policies are static (bootstrap).
+# allowed_parameters pins every role to the tenant policies, so nothing written here can carry
+# a platform policy. Can mint any tenant's credentials; cannot read tenant secrets itself.
 path "auth/{{.ReaderMount}}/role" {
   capabilities = ["list"]
 }
@@ -33,7 +33,7 @@ path "auth/{{.WriterMount}}/role" {
 path "auth/{{.WriterMount}}/role/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
   allowed_parameters = {
-    "token_policies"     = ["tenant-writer", "tenant-database"]
+    "token_policies"     = ["tenant-writer"]
     "token_ttl"          = []
     "token_max_ttl"      = []
     "token_type"         = ["service"]
@@ -49,16 +49,6 @@ path "auth/{{.WriterMount}}/role/+/role-id" {
 
 path "auth/{{.WriterMount}}/role/+/secret-id" {
   capabilities = ["update"]
-}
-
-path "{{.DatabaseMount}}/roles/tenant-*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
-  allowed_parameters = {
-    "db_name"             = []
-    "creation_statements" = [{{.DBCreationStatements}}]
-    "default_ttl"         = []
-    "max_ttl"             = []
-  }
 }
 
 path "sys/mounts" {
@@ -98,10 +88,6 @@ path "sys/audit/*" {
 }
 
 path "sys/audit-hash/*" {
-  capabilities = ["deny"]
-}
-
-path "{{.DatabaseMount}}/creds/*" {
   capabilities = ["deny"]
 }
 

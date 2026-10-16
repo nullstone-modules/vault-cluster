@@ -22,7 +22,7 @@ func (c *Client) Configure() error {
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{"provisioning", "operator", "apps-auth", "apps-reader", "apps-writer", "tenant-reader", "tenant-writer", "tenant-database"} {
+	for _, name := range []string{"provisioning", "operator", "apps-auth", "apps-reader", "apps-writer", "tenant-reader", "tenant-writer"} {
 		hcl, err := RenderPolicy(name, c.Cfg, acc)
 		if err != nil {
 			return err
@@ -36,9 +36,6 @@ func (c *Client) Configure() error {
 		log.Printf("applied policy %s", name)
 	}
 	if err := c.enableAppsAuth(); err != nil {
-		return err
-	}
-	if err := c.mountDatabase(); err != nil {
 		return err
 	}
 	log.Printf("platform configuration complete")
@@ -148,45 +145,6 @@ func (c *Client) enableTenantAppRoles() (TenantAccessors, error) {
 		}
 	}
 	return acc, nil
-}
-
-func (c *Client) mountDatabase() error {
-	if !c.Cfg.EnableCredentials {
-		log.Printf("dynamic credentials disabled")
-		return nil
-	}
-	if c.Cfg.DatabaseURL == "" || c.Cfg.DatabaseUsername == "" || c.Cfg.DatabasePassword == "" {
-		return fmt.Errorf("database connection settings are required when credentials are enabled")
-	}
-	mounts, err := c.API.Sys().ListMounts()
-	if err != nil {
-		return err
-	}
-	if _, ok := mounts[c.Cfg.DatabaseMount+"/"]; !ok {
-		if err := c.API.Sys().Mount(c.Cfg.DatabaseMount, &api.MountInput{
-			Type:        "database",
-			Description: "Dynamic database credentials",
-			Config: api.MountConfigInput{
-				DefaultLeaseTTL: c.Cfg.DatabaseTTL,
-				MaxLeaseTTL:     c.Cfg.DatabaseMaxTTL,
-			},
-		}); err != nil {
-			return err
-		}
-	}
-	_, err = c.API.Logical().Write(c.Cfg.DatabaseMount+"/config/"+c.Cfg.DatabaseConnName, map[string]any{
-		"plugin_name":             "postgresql-database-plugin",
-		"connection_url":          c.Cfg.DatabaseURL,
-		"username":                c.Cfg.DatabaseUsername,
-		"password":                c.Cfg.DatabasePassword,
-		"allowed_roles":           []string{"tenant-*"},
-		"max_open_connections":    8,
-		"max_idle_connections":    2,
-		"max_connection_lifetime": "5m",
-		"verify_connection":       true,
-		"password_authentication": "password",
-	})
-	return err
 }
 
 // AppsAuthRole is the login role the cluster function uses on the declared auth mount. It carries the apps-auth policy.
